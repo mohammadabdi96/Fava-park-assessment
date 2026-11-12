@@ -35,7 +35,7 @@ class SettingsController extends Controller
         $system = [];
         if ($tab === 'system') {
             InstallController::ensureGuards(); // the check on this page needs storage/probe.txt to exist
-            $free = @disk_free_space(STORAGE_DIR);
+            $free = can_call('disk_free_space') ? @disk_free_space(STORAGE_DIR) : false;
             $system = [
                 'نسخه سامانه' => APP_VERSION,
                 'PHP' => PHP_VERSION . ' (' . PHP_SAPI . ')',

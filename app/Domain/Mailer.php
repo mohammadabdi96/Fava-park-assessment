@@ -212,6 +212,9 @@ class Mailer
             'SNI_enabled' => true,
             'peer_name' => $host,
         ]]);
+        if (!can_call('stream_socket_client')) {
+            throw new \RuntimeException('این هاست اجازه اتصال به سرور ایمیل را نمی‌دهد (تابع stream_socket_client غیرفعال است). از پشتیبانی هاست بخواهید آن را فعال کند، یا روش «تابع mail()» را امتحان کنید.');
+        }
         $errno = 0;
         $errstr = '';
         $fp = @stream_socket_client(($enc === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $context);
@@ -276,7 +279,7 @@ class Mailer
         $host = Request::host();
         $host = (string) preg_replace('/:\d+$/', '', $host);
         if ($host === '' || $host === 'localhost' || !preg_match('/^[A-Za-z0-9.\-]+$/', $host)) {
-            $host = (string) (gethostname() ?: 'localhost');
+            $host = (string) ((can_call('gethostname') ? gethostname() : '') ?: 'localhost');
         }
         return $host;
     }

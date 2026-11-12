@@ -12,7 +12,7 @@ $__missing = [];
 if (PHP_VERSION_ID < 70400) {
     $__missing[] = 'PHP 7.4 یا بالاتر (نسخه فعلی: ' . PHP_VERSION . ')';
 }
-foreach (['pdo' => 'PDO', 'mbstring' => 'mbstring', 'json' => 'json', 'dom' => 'dom (XML)', 'zlib' => 'zlib'] as $__ext => $__label) {
+foreach (['pdo' => 'PDO', 'mbstring' => 'mbstring', 'json' => 'json', 'dom' => 'dom (XML)', 'zlib' => 'zlib', 'session' => 'session', 'filter' => 'filter'] as $__ext => $__label) {
     if (!extension_loaded($__ext)) {
         $__missing[] = 'افزونه ' . $__label;
     }

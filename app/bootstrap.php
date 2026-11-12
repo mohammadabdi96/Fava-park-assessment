@@ -15,9 +15,13 @@ const APP_VERSION = '1.0.0';
 //   <?php return ['config' => '/home/USER/fava-private/config', 'storage' => '/home/USER/fava-private/storage'];
 $__paths = is_file(APP_ROOT . '/paths.php') ? (array) require APP_ROOT . '/paths.php' : [];
 
-define('CONFIG_DIR', rtrim(getenv('FAVA_CONFIG_DIR') ?: ($__paths['config'] ?? APP_ROOT . '/config'), '/\\'));
-define('STORAGE_DIR', rtrim(getenv('FAVA_STORAGE_DIR') ?: ($__paths['storage'] ?? APP_ROOT . '/storage'), '/\\'));
-unset($__paths);
+// (getenv() may be switched off on a shared host; the two variables serve the tests and the development server)
+$__env = function (string $name) {
+    return function_exists('getenv') ? getenv($name) : false;
+};
+define('CONFIG_DIR', rtrim($__env('FAVA_CONFIG_DIR') ?: ($__paths['config'] ?? APP_ROOT . '/config'), '/\\'));
+define('STORAGE_DIR', rtrim($__env('FAVA_STORAGE_DIR') ?: ($__paths['storage'] ?? APP_ROOT . '/storage'), '/\\'));
+unset($__paths, $__env);
 
 mb_internal_encoding('UTF-8');
 date_default_timezone_set('UTC'); // everything is stored in UTC; display conversion happens in Jalali::format()

@@ -921,6 +921,59 @@ test('config and storage can live outside the web root (paths.php), before or af
     eq('', app_errors($app));
 });
 
+test('a hardened host with many PHP functions switched off still runs everything', function () {
+    // Since PHP 8 a disabled function does not exist: one unguarded call ends every request
+    // with a blank error 500. The list is what cautious shared hosts typically switch off.
+    $app = start_app(['FAVA_TEST_DISABLE_FUNCTIONS' => 'exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec,dl,show_source,highlight_file,'
+        . 'symlink,link,php_uname,phpinfo,putenv,getenv,set_time_limit,ini_set,ini_alter,ini_restore,disk_free_space,disk_total_space,diskfreespace,'
+        . 'chmod,chown,chgrp,getmyuid,getmypid,getmyinode,get_current_user,gethostname,gethostbyname,gethostbyaddr,openlog,syslog,'
+        . 'escapeshellarg,escapeshellcmd,posix_kill,posix_getpwuid,posix_uname,error_log,glob'], '', true);
+    $c = install_app($app);
+    ok(is_file($app['config'] . '/config.php'), 'installed');
+
+    $r = $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['a.docx', (string) file_get_contents(fixture('sample-proposal-1.docx'))]]);
+    eq('/admin/proposals/1', $r->location());
+    $r = $c->submit('/admin/proposals/1/update', ['action' => 'confirm', 'title' => 'سامانه پایش انرژی', 'company' => 'داده‌پردازان', 'requested_amount' => '18.5', 'share_doc' => '1', 'share_file' => '1']);
+    contains('اطلاعات طرح تأیید شد', $r->body);
+    $r = $c->submit('/admin/proposals/1/assign/tech', ['name' => 'دکتر رضا فنی‌پور', 'email' => 'reza@example.org']);
+    $tech = page_tokens($r)[0];
+    $r = $c->submit('/admin/proposals/1/assign/biz', ['name' => 'مهندس مریم بازارگان']);
+    $biz = array_values(array_diff(page_tokens($r), [$tech]))[0];
+
+    $judge = new HttpClient($app['base']);
+    eq(200, $judge->get('/f/' . $tech)->status);
+    eq(200, $judge->postJson('/f/' . $tech . '/draft', ['open' => true, 'answers' => ['scores' => ['tech-1' => 4]]])->status);
+    eq(200, $judge->postJson('/f/' . $tech . '/submit', ['answers' => browser_answers('tech', [4, 5, 3, 4, 4])])->status);
+    eq(200, $judge->postJson('/f/' . $biz . '/submit', ['answers' => browser_answers('biz', [5])])->status);
+    eq(200, $judge->get('/f/' . $tech . '/file')->status);
+    $r = $c->submit('/admin/proposals/1/finalize', ['decision' => 'approve', 'amount' => '18.315']);
+    contains('تصمیم نهایی ثبت شد', $r->body);
+
+    foreach (['/admin', '/admin/proposals', '/admin/proposals/1', '/admin/proposals/1/report', '/admin/judges', '/admin/activity',
+        '/admin/settings?tab=general', '/admin/settings?tab=scoring', '/admin/settings?tab=mail', '/admin/settings?tab=account', '/admin/settings?tab=system',
+        '/admin/export/proposals', '/admin/export/scores', '/admin/proposals/1/file', '/admin/proposals/1/preview/tech'] as $page) {
+        eq(200, $c->get($page)->status, $page);
+    }
+    contains('فضای آزاد دیسک', text_of($c->get('/admin/settings?tab=system')), 'the status page copes without disk_free_space()');
+
+    // e-mail: the attempt fails (nothing listens on that port) but with a message, not a crash
+    $r = $c->submit('/admin/settings/mail', ['transport' => 'smtp', 'host' => '127.0.0.1', 'port' => (string) free_port(), 'encryption' => 'none',
+        'from_email' => 'assessment@park.example.ir', 'from_name' => 'پارک فاوا']);
+    eq(200, $r->status);
+    $r = $c->submit('/admin/settings/test-mail', ['to' => 'someone@example.org']);
+    eq(200, $r->status);
+    contains('اتصال به سرور SMTP برقرار نشد', $r->body);
+
+    $c2 = new HttpClient($app['base']);
+    $r = $c2->post('/admin/login', ['_csrf' => $c2->csrf('/admin/login'), 'username' => 'admin', 'password' => 'Test-12345']);
+    eq(302, $r->status, 'logging in again works (sessions without ini_set)');
+
+    $bad = array_filter(explode("\n", app_errors($app)), function ($line) {
+        return (bool) preg_match('/PHP (warning|deprecation|notice|fatal)|Exception|Error:|has been disabled/i', $line) && strpos($line, 'SMTP') === false;
+    });
+    eq([], array_values(array_slice($bad, 0, 3)), 'nothing in the PHP or application error log');
+});
+
 test('missing guard files are put back before anything is stored', function () {
     $app = start_app([], '', true);
     // a file manager that hides dot-files: the upload arrived without them

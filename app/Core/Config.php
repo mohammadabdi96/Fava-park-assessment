@@ -88,7 +88,9 @@ class Config
         if (@file_put_contents($tmp, $php, LOCK_EX) === false) {
             throw new \RuntimeException('امکان نوشتن در پوشه config وجود ندارد. سطح دسترسی پوشه را بررسی کنید.');
         }
-        @chmod($tmp, 0640);
+        if (can_call('chmod')) {
+            @chmod($tmp, 0640);
+        }
         if (!@rename($tmp, self::file())) {
             @unlink($tmp);
             throw new \RuntimeException('ذخیره فایل پیکربندی انجام نشد.');

@@ -274,6 +274,21 @@ test('pictures and charts cannot be shown, so the reader is told they exist', fu
     lacks('تصویر یا نمودار', DocRenderer::html(['blocks' => $plain['blocks'], 'meta' => []]), 'documents stored before this note existed still render');
 });
 
+test('reading a worksheet needs little memory, with or without the zip extension', function () {
+    // ZipArchive reserves the whole length it is asked for. Asking for the 40 MB safety limit
+    // made every upload fail on hosts whose memory_limit is below about 48 MB.
+    $code = 'define("APP_ROOT", ' . var_export(APP_ROOT, true) . '); require APP_ROOT . "/app/bootstrap.php";'
+        . ' if (!empty($argv[2])) { \Fava\Core\ZipLite::$forcePurePhp = true; }'
+        . ' $d = \Fava\Docx\DocxReader::read($argv[1]);'
+        . ' echo "read ", $d["meta"]["paragraphs"], " paragraphs, ", class_exists("ZipArchive") && empty($argv[2]) ? "zip extension" : "built-in reader";';
+    foreach (['', '1'] as $pure) {
+        $out = (string) shell_exec(php_command() . ' -d memory_limit=16M -d display_errors=1 -r ' . escapeshellarg($code) . ' -- '
+            . escapeshellarg(fixture('sample-proposal-1.docx')) . ' ' . escapeshellarg($pure) . ' 2>&1');
+        contains('read ', $out, 'with a memory_limit of 16 MB');
+        lacks('Allowed memory size', $out);
+    }
+});
+
 test('an empty document renders a friendly note', function () {
     contains('متنی برای نمایش وجود ندارد', DocRenderer::html(['blocks' => [], 'meta' => []]));
     contains('متنی برای نمایش وجود ندارد', DocRenderer::html([]));
