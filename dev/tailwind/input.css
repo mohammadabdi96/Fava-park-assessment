@@ -233,7 +233,8 @@ details[open] .rot { transform: rotate(-90deg); }
 .docx .dx-t td { border: 1px solid #cbd5e1; padding: .35rem .55rem; vertical-align: top; }
 .docx .dx-t td p { margin: .1rem 0; }
 .docx .dx-t .dx-sh, .docx .dx-t .dx-hd td { background: #f1f5f9; font-weight: 600; }
-.docx .dx-empty, .dx-note { @apply text-slate-500 text-sm; }
+.docx .dx-empty { @apply text-slate-500 text-sm; }
+.dx-note { @apply text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 my-3 leading-6; }
 
 @tailwind utilities;
 

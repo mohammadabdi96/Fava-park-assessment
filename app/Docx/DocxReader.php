@@ -42,7 +42,7 @@ class DocxReader
     /** @var bool */
     private $truncated = false;
     /** @var array */
-    private $stats = ['paragraphs' => 0, 'tables' => 0, 'chars' => 0];
+    private $stats = ['paragraphs' => 0, 'tables' => 0, 'chars' => 0, 'images' => 0];
 
     /**
      * @throws DocxException with a message that can be shown to the admin
@@ -104,6 +104,7 @@ class DocxReader
             'paragraphs' => $this->stats['paragraphs'],
             'tables' => $this->stats['tables'],
             'chars' => $this->stats['chars'],
+            'images' => $this->stats['images'],
             'truncated' => $this->truncated ? 1 : 0,
         ];
         if ($coreXml) {
@@ -554,6 +555,9 @@ class DocxReader
                 case 'drawing':
                 case 'pict':
                 case 'object':
+                    if (self::hasPicture($c)) {
+                        $this->stats['images']++;
+                    }
                     $this->textBoxes($c, $extra, $depth);
                     break;
                 // instrText, delText, footnoteReference, softHyphen, lastRenderedPageBreak…: ignored
@@ -565,6 +569,17 @@ class DocxReader
     }
 
     /** Paragraphs inside text boxes become ordinary blocks placed before their anchor paragraph. */
+    /** A picture, chart, diagram or embedded object: content that cannot be shown as text. */
+    private static function hasPicture(DOMElement $node): bool
+    {
+        foreach (['blip', 'imagedata', 'chart', 'relIds', 'OLEObject'] as $name) {
+            if ($node->getElementsByTagNameNS('*', $name)->length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function textBoxes(DOMElement $node, array &$extra, int $depth): void
     {
         if ($depth > self::MAX_DEPTH) {

@@ -124,8 +124,13 @@ while (time() < $deadline) {
                 $data .= $l;
             }
             $count++;
-            file_put_contents($out . '/message-' . $count . '.eml', $data);
-            file_put_contents($out . '/message-' . $count . '.json', json_encode(['from' => $from, 'to' => $to, 'tls' => $tls, 'authed' => $authed && $user !== '', 'log' => $log]));
+            // Written under another name and renamed: the test polls for these files and must
+            // never see one that exists but is still empty. The .json appears last.
+            $base = $out . '/message-' . $count;
+            file_put_contents($base . '.eml.part', $data);
+            rename($base . '.eml.part', $base . '.eml');
+            file_put_contents($base . '.json.part', json_encode(['from' => $from, 'to' => $to, 'tls' => $tls, 'authed' => $authed && $user !== '', 'log' => $log]));
+            rename($base . '.json.part', $base . '.json');
             $send('250 OK queued');
         } elseif ($verb === 'QUIT') {
             $send('221 Bye');

@@ -16,6 +16,11 @@ class DocRenderer
             return '<div class="docx"><p class="dx-empty">متنی برای نمایش وجود ندارد.</p></div>';
         }
         $html = '<div class="docx" dir="rtl">' . self::blocks($blocks) . '</div>';
+        $images = (int) ($doc['meta']['images'] ?? 0);
+        if ($images > 0) {
+            // pictures and charts are not shown here: say so, or a judge will never know they exist
+            $html = '<p class="dx-note">این کاربرگ ' . \Fava\Core\Fa::digits((string) $images) . ' تصویر یا نمودار دارد که در این نما دیده نمی‌شود و فقط در فایل Word اصلی هست.</p>' . $html;
+        }
         if (!empty($doc['meta']['truncated'])) {
             $html .= '<p class="dx-note">ادامه سند به دلیل حجم زیاد نمایش داده نشده است؛ فایل اصلی را دانلود کنید.</p>';
         }

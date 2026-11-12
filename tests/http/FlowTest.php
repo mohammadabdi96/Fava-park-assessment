@@ -323,7 +323,11 @@ test('a judge opens the link: the form of that role only, nothing of the admin',
 
 test('invalid, mistyped or foreign links show a neutral page', function () use (&$app, &$state) {
     $judge = new HttpClient($app['base']);
-    foreach ([str_repeat('a', 32), substr($state['tech'], 0, 31) . 'A', strtolower($state['tech']) === $state['tech'] ? strtoupper($state['tech']) : strtolower($state['tech'])] as $bad) {
+    // one wrong character at the end; a real link ends in «A» once in 64 times
+    $mistyped = substr($state['tech'], 0, 31) . (substr($state['tech'], -1) === 'A' ? 'B' : 'A');
+    $otherCase = strtolower($state['tech']) === $state['tech'] ? strtoupper($state['tech']) : strtolower($state['tech']);
+    ok($mistyped !== $state['tech'] && $otherCase !== $state['tech'], 'the test links really differ from the real one');
+    foreach ([str_repeat('a', 32), $mistyped, $otherCase] as $bad) {
         $r = $judge->get('/f/' . $bad);
         eq(404, $r->status, $bad);
         contains('معتبر نیست', $r->body);

@@ -302,8 +302,13 @@ function wait_for_port(int $port, float $seconds = 10.0): bool
     while (microtime(true) < $end) {
         $s = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.3);
         if ($s) {
+            // A local socket can connect to itself when the system happens to pick the target
+            // port as its own source port, although nothing is listening there yet.
+            $self = stream_socket_get_name($s, false) === stream_socket_get_name($s, true);
             fclose($s);
-            return true;
+            if (!$self) {
+                return true;
+            }
         }
         usleep(50000);
     }

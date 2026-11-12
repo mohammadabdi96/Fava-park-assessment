@@ -41,7 +41,7 @@ function smtp_stop(array $server): void
 function smtp_message(array $server, int $n = 1): array
 {
     $file = $server['dir'] . '/message-' . $n . '.eml';
-    $end = microtime(true) + 5;
+    $end = microtime(true) + 20; // returns as soon as the message is there; generous for a busy machine
     while (!is_file($server['dir'] . '/message-' . $n . '.json') && microtime(true) < $end) {
         usleep(20000);
     }

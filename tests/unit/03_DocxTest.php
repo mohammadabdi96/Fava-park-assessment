@@ -248,6 +248,32 @@ test('the real structure survives: headings, tables, merged cells, check boxes',
     eq(substr_count($html, '<td') + substr_count($html, '<th') - substr_count($html, '<thead') , substr_count($html, '</td>') + substr_count($html, '</th>'));
 });
 
+test('pictures and charts cannot be shown, so the reader is told they exist', function () {
+    $ns = ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        . ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+        . ' xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:v="urn:schemas-microsoft-com:vml"'
+        . ' xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"';
+    $picture = '<w:p><w:r><w:drawing' . $ns . '><wp:inline><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        . '<pic:pic><pic:blipFill><a:blip r:embed="rId5"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+    $chart = '<w:p><w:r><w:drawing' . $ns . '><wp:inline><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">'
+        . '<c:chart r:id="rId6"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+    $oldPicture = '<w:p><w:r><w:pict' . $ns . '><v:shape><v:imagedata r:id="rId7"/></v:shape></w:pict></w:r></w:p>';
+    $textBox = '<w:p><w:r><w:drawing' . $ns . '><wp:anchor><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+        . '<wps:wsp><wps:txbx><w:txbxContent>' . wp('متن داخل کادر') . '</w:txbxContent></wps:txbx></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>';
+
+    $doc = DocxReader::read(docx_with_body(wp('عنوان طرح: طرح مصور') . $picture . wp('شرح نمودار') . $chart . $oldPicture . $textBox));
+    eq(3, $doc['meta']['images'], 'a picture, a chart and an old-style picture; the text box is not one');
+    $html = DocRenderer::html($doc);
+    contains('این کاربرگ ۳ تصویر یا نمودار دارد', $html);
+    ok(strpos($html, 'تصویر یا نمودار') < strpos($html, 'عنوان طرح'), 'the note comes first');
+    contains('متن داخل کادر', $html, 'text inside a shape is still read');
+
+    $plain = DocxReader::read(docx_with_body(wp('فقط متن') . $textBox));
+    eq(0, $plain['meta']['images']);
+    lacks('تصویر یا نمودار', DocRenderer::html($plain));
+    lacks('تصویر یا نمودار', DocRenderer::html(['blocks' => $plain['blocks'], 'meta' => []]), 'documents stored before this note existed still render');
+});
+
 test('an empty document renders a friendly note', function () {
     contains('متنی برای نمایش وجود ندارد', DocRenderer::html(['blocks' => [], 'meta' => []]));
     contains('متنی برای نمایش وجود ندارد', DocRenderer::html([]));
