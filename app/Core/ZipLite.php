@@ -99,11 +99,14 @@ class ZipLite
             throw new \RuntimeException('بخشی از فایل بیش از حد مجاز بزرگ است.');
         }
         if ($this->zip) {
-            $data = $this->zip->getFromName($name, $maxBytes + 1);
+            // Ask for one byte more than the entry claims to hold: ZipArchive reserves the whole
+            // requested length at once, so asking for the 40 MB limit would cost 40 MB of
+            // memory for every part, however small the document is.
+            $data = $this->zip->getFromName($name, $size + 1);
             if ($data === false) {
                 return null;
             }
-            if (strlen($data) > $maxBytes) {
+            if (strlen($data) > $size) {
                 throw new \RuntimeException('بخشی از فایل بیش از حد مجاز بزرگ است.');
             }
             return $data;

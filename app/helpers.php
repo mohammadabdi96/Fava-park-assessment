@@ -403,6 +403,29 @@ function icon(string $name, string $class = 'w-5 h-5'): string
     return $html . '</svg>';
 }
 
+/**
+ * Shared hosts often switch PHP functions off (disable_functions). Since PHP 8 a disabled
+ * function does not exist at all, so calling it ends the request with a fatal error and
+ * «@» does not help. Everything that is merely nice to have goes through these two.
+ */
+function can_call(string $function): bool
+{
+    return function_exists($function);
+}
+
+function try_ini_set(string $key, string $value): void
+{
+    if (function_exists('ini_set')) {
+        @ini_set($key, $value);
+    }
+}
+
+/** Environment variable, or false when it is not set or the host does not allow reading it. */
+function env_value(string $name)
+{
+    return function_exists('getenv') ? getenv($name) : false;
+}
+
 /** Send the response to the browser and keep working (used for slow follow-up work such as e-mail). */
 function finish_request(): void
 {

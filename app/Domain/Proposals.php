@@ -136,7 +136,9 @@ class Proposals
         if (!$moved) {
             throw new \RuntimeException('ذخیره فایل روی سرور ناموفق بود. سطح دسترسی پوشه storage/uploads را بررسی کنید.');
         }
-        @chmod($target, 0644);
+        if (can_call('chmod')) {
+            @chmod($target, 0644);
+        }
 
         $f = $extract['fields'];
         $db = DB::get();

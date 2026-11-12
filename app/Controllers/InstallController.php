@@ -281,9 +281,14 @@ class InstallController extends Controller
     /** Reuse the database file of an earlier installation when there is exactly one; otherwise start a new one. */
     private function sqliteFile(): string
     {
-        $found = glob(STORAGE_DIR . '/database/*.sqlite') ?: [];
+        $found = [];
+        foreach (@scandir(STORAGE_DIR . '/database') ?: [] as $name) {
+            if (substr($name, -7) === '.sqlite') {
+                $found[] = $name;
+            }
+        }
         if (count($found) === 1) {
-            return 'database/' . basename($found[0]);
+            return 'database/' . $found[0];
         }
         return 'database/fava-' . bin2hex(random_bytes(8)) . '.sqlite';
     }

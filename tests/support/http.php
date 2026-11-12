@@ -211,6 +211,10 @@ function start_app(array $env = [], string $prefix = '', bool $uploaded = false)
         copy_tree(dirname(__DIR__, 2), $root, ['.git', 'tests', 'dev', 'node_modules', 'google_drive'], ['config' => ['.htaccess'], 'storage' => ['.htaccess', 'probe.txt']]);
         $env += ['FAVA_CONFIG_DIR' => '', 'FAVA_STORAGE_DIR' => ''];
     }
+    // FAVA_TEST_DISABLE_FUNCTIONS is not passed on: it becomes PHP's disable_functions for the
+    // server, to imitate a shared host that has switched functions off.
+    $disabled = (string) ($env['FAVA_TEST_DISABLE_FUNCTIONS'] ?? '');
+    unset($env['FAVA_TEST_DISABLE_FUNCTIONS']);
     $docRoot = $root;
     if ($prefix !== '') {
         // serve the application from a sub-folder, as on «example.ir/assess»
@@ -222,7 +226,7 @@ function start_app(array $env = [], string $prefix = '', bool $uploaded = false)
     }
     $apache = apache_setup();
     if ($apache !== null) {
-        return start_apache_app($apache, $env, $prefix, $home, $docRoot, $root);
+        return start_apache_app($apache, $env, $prefix, $home, $docRoot, $root, $disabled);
     }
     $router = $home . '/router.php';
     file_put_contents($router, '<?php
@@ -254,6 +258,7 @@ require $root . "/index.php";
     $log = $home . '/server.log';
     $cmd = php_command() . ' -d display_errors=0 -d log_errors=1 -d error_log=' . escapeshellarg($home . '/php-errors.log')
         . ' -d upload_max_filesize=32M -d post_max_size=40M'
+        . ($disabled !== '' ? ' -d disable_functions=' . escapeshellarg($disabled) : '')
         . ' -S 127.0.0.1:' . $port . ' -t ' . escapeshellarg($docRoot) . ' ' . escapeshellarg($router);
     $proc = start_background($cmd, $log, $env + [
         'FAVA_CONFIG_DIR' => $home . '/config',
@@ -325,7 +330,7 @@ function apache_setup(): ?array
     return $cfg;
 }
 
-function start_apache_app(array $cfg, array $env, string $prefix, string $home, string $docRoot, string $appRoot): array
+function start_apache_app(array $cfg, array $env, string $prefix, string $home, string $docRoot, string $appRoot, string $disabled = ''): array
 {
     $port = free_port();
     $fpmPort = free_port();
@@ -384,7 +389,8 @@ function start_apache_app(array $cfg, array $env, string $prefix, string $home, 
         . "catch_workers_output = yes\n"
         . "php_admin_flag[log_errors] = on\n"
         . "php_admin_flag[display_errors] = off\n"
-        . 'php_admin_value[error_log] = ' . $home . "/php-errors.log\n");
+        . 'php_admin_value[error_log] = ' . $home . "/php-errors.log\n"
+        . ($disabled !== '' ? 'php_admin_value[disable_functions] = ' . $disabled . "\n" : ''));
 
     // Apache signals its whole process group when it stops; without a session of its own
     // that group would include this test run (and the terminal that started it).

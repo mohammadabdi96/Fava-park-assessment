@@ -29,12 +29,20 @@ duplicate-file detection, and password recovery without e-mail.
 
 ## Requirements
 
-- PHP 7.4 to 8.3 with `mbstring`, `dom`, `zlib`, `json` and `pdo_mysql` or `pdo_sqlite`.
-  Optional: `openssl` (encrypted SMTP), `zip` (a built-in reader is used without it).
-- MySQL 5.7+ / MariaDB 10.2+ (tested on MariaDB 10.2), or SQLite (no database
-  account needed).
-- Apache or LiteSpeed with `.htaccess` files enabled. `mod_rewrite` is optional:
-  without it the addresses look like `index.php?r=/admin`.
+| | Minimum | Notes |
+|---|---|---|
+| PHP | 7.4 | Tested on 7.4 and 8.3; 8.1–8.3 recommended. |
+| PHP extensions | `pdo` with `pdo_mysql` or `pdo_sqlite`, `mbstring`, `dom`, `json`, `zlib`, `session`, `filter` | All are part of a standard PHP build. `openssl` is needed for e-mail over SSL/TLS; `zip` is optional. |
+| Database | MySQL 5.7 / MariaDB 10.2, or SQLite 3.7 | A MySQL user with all privileges on one database. SQLite needs no account. |
+| Web server | Apache 2.4 reading `.htaccess` | LiteSpeed reads the same files but is untested. `mod_rewrite` is optional: without it the addresses look like `index.php?r=/admin`. |
+| HTTPS | required for real use | A judge's link works like a password. |
+| Disk | about 1 MB for the application | Plus the uploaded Word files and a few kilobytes per proposal in the database. |
+| PHP settings | `file_uploads = On` | `.user.ini` raises the upload limit to 32 MB; the default `memory_limit` is far more than needed. |
+| Outgoing e-mail | optional | An SMTP mailbox (port 465 or 587) or PHP `mail()`. Without it the admin copies the links by hand. |
+
+No Composer, Node, SSH, cron job or background process is needed. The application
+copes with functions that shared hosts commonly switch off (`ini_set`, `exec`,
+`chmod`, `disk_free_space`, `getenv` and the like) and with `open_basedir`.
 
 ## Installation in short
 
@@ -138,6 +146,10 @@ FAVA_TEST_MYSQL='{"host":"127.0.0.1","name":"fava_test","user":"fava","pass":"se
 FAVA_TEST_APACHE='{"httpd":"/usr/sbin/apache2","fpm":"/usr/sbin/php-fpm8.3"}' php tests/run.php
 ```
 
+Add `"fpm_ini":"/path/to/php.ini"` to the second one to run PHP-FPM with a php.ini of
+your own, for example one that loads only the required extensions or disables
+functions the way your host does.
+
 ### What has been verified, and what has not
 
 | | |
@@ -145,6 +157,7 @@ FAVA_TEST_APACHE='{"httpd":"/usr/sbin/apache2","fpm":"/usr/sbin/php-fpm8.3"}' ph
 | PHP 8.3.8 and PHP 7.4.33 | all tests pass on both |
 | SQLite 3.7, MariaDB 10.2.11 | all database tests pass on both |
 | Apache 2.4.69 + PHP-FPM | all end-to-end tests pass through the real `.htaccess`, in the web root, in a sub-folder and without `mod_rewrite` |
+| A bare host | the same tests pass with only the required extensions loaded, OPcache on, `memory_limit = 8M`, `open_basedir` set and some forty functions disabled |
 | Browser | headless Chromium only, at desktop and phone widths |
 | **Not tested** | LiteSpeed, nginx, a real cPanel account, MySQL 8, a real mail provider, Firefox, Safari, Windows hosting, PHP 8.4 |
 

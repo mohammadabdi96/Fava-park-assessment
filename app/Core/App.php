@@ -78,8 +78,8 @@ class App
     {
         error_reporting(E_ALL);
         $debug = (bool) Config::get('debug', false);
-        @ini_set('display_errors', $debug ? '1' : '0');
-        @ini_set('log_errors', '1');
+        try_ini_set('display_errors', $debug ? '1' : '0');
+        try_ini_set('log_errors', '1');
         // In debug mode every warning stops the request, so nothing fails silently while testing.
         // In production warnings are logged and the request carries on.
         set_error_handler(function ($severity, $message, $file, $line) use ($debug) {
@@ -106,7 +106,7 @@ class App
         header('X-Robots-Tag: noindex, nofollow');
         header('Cache-Control: no-store, max-age=0');
         // FAVA_EMBED=1 is a development switch for previews that show the site inside another site's frame
-        if (Config::get('security.frame_protection', true) && !getenv('FAVA_EMBED')) {
+        if (Config::get('security.frame_protection', true) && !env_value('FAVA_EMBED')) {
             header('X-Frame-Options: SAMEORIGIN');
         }
         if (Request::isHttps() && Config::get('security.hsts', false)) {

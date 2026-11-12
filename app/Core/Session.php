@@ -22,18 +22,18 @@ class Session
         if ((is_dir($dir) || @mkdir($dir, 0700, true)) && is_writable($dir)) {
             session_save_path($dir);
             // Shared hosts often disable PHP's own garbage collection for the default path.
-            @ini_set('session.gc_probability', '1');
-            @ini_set('session.gc_divisor', '100');
+            try_ini_set('session.gc_probability', '1');
+            try_ini_set('session.gc_divisor', '100');
         }
-        @ini_set('session.gc_maxlifetime', (string) self::IDLE_SECONDS);
-        @ini_set('session.use_strict_mode', '1');
-        @ini_set('session.use_only_cookies', '1');
-        @ini_set('session.use_trans_sid', '0');
+        try_ini_set('session.gc_maxlifetime', (string) self::IDLE_SECONDS);
+        try_ini_set('session.use_strict_mode', '1');
+        try_ini_set('session.use_only_cookies', '1');
+        try_ini_set('session.use_trans_sid', '0');
 
         $secureCfg = Config::get('session.secure', 'auto');
         $secure = $secureCfg === 'auto' ? Request::isHttps() : (bool) $secureCfg;
         $sameSite = (string) Config::get('session.samesite', 'Lax');
-        if (getenv('FAVA_EMBED')) {
+        if (env_value('FAVA_EMBED')) {
             // development preview inside a frame of another site: the cookie must be allowed cross-site
             $sameSite = 'None';
             $secure = true;

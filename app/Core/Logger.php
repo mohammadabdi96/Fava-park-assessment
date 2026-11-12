@@ -35,7 +35,9 @@ class Logger
     {
         $dir = STORAGE_DIR . '/logs';
         if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
-            error_log('[fava] ' . $level . ' ' . $message);
+            if (can_call('error_log')) {
+                error_log('[fava] ' . $level . ' ' . $message);
+            }
             return;
         }
         $line = '[' . gmdate('Y-m-d H:i:s') . ' UTC] ' . $level . ' ' . $message;
