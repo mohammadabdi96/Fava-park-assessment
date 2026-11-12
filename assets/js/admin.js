@@ -164,6 +164,12 @@
       var v = num(input.value);
       if (input.value.trim() === '') { hint.innerHTML = first ? initial : '&nbsp;'; hint.classList.remove('text-red-600'); return; }
       if (v === null) { hint.textContent = 'فقط عدد وارد کنید (به میلیارد ریال).'; hint.classList.add('text-red-600'); return; }
+      if (v < 0 || (v === 0 && !form)) {
+        // zero means «no payment» only in the final decision; a requested amount cannot be zero
+        hint.textContent = v < 0 ? 'مبلغ نمی‌تواند منفی باشد.' : 'مبلغ باید بزرگ‌تر از صفر باشد.';
+        hint.classList.add('text-red-600');
+        return;
+      }
       hint.classList.remove('text-red-600');
       var text = v > 0 ? 'برابر با ' + toman(v) : 'بدون پرداخت';
       if (limit !== null && v > limit + 0.0005) { text += ' — بیشتر از مبنای محاسبه (' + fmt(limit, 3) + ' میلیارد ریال) است.'; }
@@ -181,22 +187,37 @@
     var depth = 0;
     if (!input) { return; }
 
+    function list(files) { return files.map(function (f) { return '• ' + f.name; }).join('\n'); }
+    /** leave only these files in the file input; false when the browser cannot do that */
+    function keepOnly(files) {
+      try {
+        var dt = new DataTransfer();
+        files.forEach(function (f) { dt.items.add(f); });
+        input.files = dt.files;
+        return input.files.length === files.length;
+      } catch (err) { return false; }
+    }
+
     function send() {
       var files = Array.prototype.slice.call(input.files || []);
       if (!files.length || form.hasAttribute('data-sending')) { return; }
-      var bad = files.filter(function (f) { return !/\.docx$/i.test(f.name); });
-      if (bad.length) {
-        toast('فقط فایل Word با پسوند ‎.docx پذیرفته می‌شود');
-        window.alert('این فایل‌ها با قالب docx نیستند و بارگذاری نمی‌شوند:\n' + bad.map(function (f) { return f.name; }).join('\n') +
-          '\n\nاگر فایل شما با قالب قدیمی ‎.doc است، آن را در Word باز کنید و با «Save As» به ‎.docx تبدیل کنید.');
-        input.value = '';
-        return;
-      }
-      var big = max > 0 ? files.filter(function (f) { return f.size > max; }) : [];
-      if (big.length) {
-        window.alert('حجم این فایل‌ها بیشتر از حد مجاز است:\n' + big.map(function (f) { return f.name; }).join('\n'));
-        input.value = '';
-        return;
+      var wrong = files.filter(function (f) { return !/\.docx$/i.test(f.name); });
+      var big = max > 0 ? files.filter(function (f) { return wrong.indexOf(f) === -1 && f.size > max; }) : [];
+      if (wrong.length || big.length) {
+        // put the unusable files aside and carry on with the rest, and say exactly that
+        var good = files.filter(function (f) { return wrong.indexOf(f) === -1 && big.indexOf(f) === -1; });
+        var rest = good.length > 0 && keepOnly(good);
+        var msg = [];
+        if (wrong.length) {
+          msg.push('این فایل‌ها با قالب docx نیستند:\n' + list(wrong) +
+            '\n\nاگر فایل شما با قالب قدیمی ‎.doc است، آن را در Word باز کنید و با «Save As» به ‎.docx تبدیل کنید.');
+        }
+        if (big.length) { msg.push('حجم این فایل‌ها بیشتر از حد مجاز است:\n' + list(big)); }
+        msg.push(rest ? 'این فایل‌ها کنار گذاشته شد؛ ' + toFa(good.length) + ' فایل دیگر اکنون بارگذاری می‌شود.'
+          : (good.length ? 'هیچ فایلی بارگذاری نشد. لطفاً فقط فایل‌های درست را دوباره انتخاب کنید.' : 'هیچ فایلی بارگذاری نشد.'));
+        window.alert(msg.join('\n\n'));
+        if (!rest) { input.value = ''; return; }
+        files = good;
       }
       form.setAttribute('data-sending', '1');
       if (names) { names.textContent = files.map(function (f) { return f.name; }).join('، '); }

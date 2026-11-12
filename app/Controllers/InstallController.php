@@ -106,7 +106,34 @@ class InstallController extends Controller
             }
         }
         $checks[] = ['دسترسی نوشتن در پوشه storage و زیرپوشه‌های آن', $storageOk, true, STORAGE_DIR];
+
+        self::ensureGuards();
+        $server = (string) ($_SERVER['SERVER_SOFTWARE'] ?? '');
+        if (preg_match('/apache|litespeed/i', $server) && !is_file(APP_ROOT . '/.htaccess')) {
+            // file managers and FTP programs hide dot-files unless told otherwise
+            $checks[] = ['فایل ‎.htaccess در پوشه اصلی سامانه', false, false, 'این فایل بارگذاری نشده است. در File Manager گزینه «Show Hidden Files» را روشن کنید و فایل‌های ‎.htaccess و ‎.user.ini را هم بارگذاری کنید.'];
+        }
         return $checks;
+    }
+
+    /**
+     * The rules that close config/ and storage/ to the web, and the file the «is storage
+     * reachable?» check asks for, are small hidden files that an upload can easily leave
+     * behind. Put them back when they are missing; an existing file is never touched.
+     */
+    public static function ensureGuards(): void
+    {
+        $deny = "# Private folder – nothing in here may be opened from the web.\n"
+            . "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+            . "<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n";
+        foreach ([CONFIG_DIR, STORAGE_DIR] as $dir) {
+            if (is_dir($dir) && !is_file($dir . '/.htaccess')) {
+                @file_put_contents($dir . '/.htaccess', $deny);
+            }
+        }
+        if (is_dir(STORAGE_DIR) && !is_file(STORAGE_DIR . '/probe.txt')) {
+            @file_put_contents(STORAGE_DIR . '/probe.txt', "fava-storage-probe\n");
+        }
     }
 
     public function run(array $params): void

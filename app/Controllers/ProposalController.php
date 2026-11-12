@@ -532,7 +532,13 @@ class ProposalController extends Controller
             $this->toProposal($id, 'final');
         }
         $label = FormDef::decision($decision)['label'];
-        Activity::log('finalize', 'تصمیم نهایی: ' . $label . ($decision !== 'reject' ? ' با مبلغ ' . money($amount) : '') . '.', $id);
+        $saved = Proposals::find($id);
+        $text = 'تصمیم نهایی: ' . $label . ($decision !== 'reject' ? ' با مبلغ ' . money($saved['final_amount'] ?? $amount) : '') . '.';
+        if (!empty($saved['final_note'])) {
+            // the reason belongs in the audit trail: it is what justifies leaving the calculated result
+            $text .= ' توضیح مدیر: ' . str_limit((string) $saved['final_note'], 300);
+        }
+        Activity::log('finalize', $text, $id);
         flash('success', 'تصمیم نهایی ثبت شد.');
         $this->toProposal($id, 'final');
     }

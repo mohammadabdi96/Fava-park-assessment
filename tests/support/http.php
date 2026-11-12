@@ -197,13 +197,20 @@ final class HttpClient
  * Start the application on the built-in web server with its own empty config/storage.
  * @return array{base:string,home:string,log:string,port:int,proc:resource}
  */
-function start_app(array $env = [], string $prefix = ''): array
+function start_app(array $env = [], string $prefix = '', bool $uploaded = false): array
 {
     $home = tmp_dir('fava-app-');
     mkdir($home . '/config');
     mkdir($home . '/storage');
     $port = free_port();
     $root = dirname(__DIR__, 2);
+    if ($uploaded) {
+        // The files as an admin uploads them to public_html: no .git, no dev tools, and the
+        // private folders inside the web root, protected by nothing but the .htaccess files.
+        $root = $home . '/public_html';
+        copy_tree(dirname(__DIR__, 2), $root, ['.git', 'tests', 'dev', 'node_modules', 'google_drive'], ['config' => ['.htaccess'], 'storage' => ['.htaccess', 'probe.txt']]);
+        $env += ['FAVA_CONFIG_DIR' => '', 'FAVA_STORAGE_DIR' => ''];
+    }
     $docRoot = $root;
     if ($prefix !== '') {
         // serve the application from a sub-folder, as on «example.ir/assess»
@@ -212,6 +219,10 @@ function start_app(array $env = [], string $prefix = ''): array
         if (!@symlink($root, $docRoot . '/' . trim($prefix, '/'))) {
             throw new TestSkipped('symlinks are not available');
         }
+    }
+    $apache = apache_setup();
+    if ($apache !== null) {
+        return start_apache_app($apache, $env, $prefix, $home, $docRoot, $root);
     }
     $router = $home . '/router.php';
     file_put_contents($router, '<?php
@@ -251,19 +262,166 @@ require $root . "/index.php";
     if (!wait_for_port($port, 15)) {
         throw new \RuntimeException('the built-in web server did not start: ' . @file_get_contents($log));
     }
-    return ['base' => 'http://127.0.0.1:' . $port . rtrim($prefix, '/'), 'home' => $home, 'log' => $log, 'port' => $port, 'proc' => $proc];
+    return ['base' => 'http://127.0.0.1:' . $port . rtrim($prefix, '/'), 'home' => $home, 'log' => $log, 'port' => $port, 'proc' => $proc,
+        'server' => 'builtin', 'root' => $root] + app_dirs($env, $home, $root);
+}
+
+/** Where this instance keeps its configuration and data. */
+function app_dirs(array $env, string $home, string $root): array
+{
+    $own = ($env['FAVA_CONFIG_DIR'] ?? null) === '';
+    return ['config' => $own ? $root . '/config' : $home . '/config', 'storage' => $own ? $root . '/storage' : $home . '/storage'];
+}
+
+/** Copy a folder; $skip = names left out everywhere, $only = [top-level folder => the only entries copied from it]. */
+function copy_tree(string $src, string $dst, array $skip = [], array $only = [], string $rel = ''): void
+{
+    if (!is_dir($dst)) {
+        mkdir($dst, 0777, true);
+    }
+    foreach (scandir($src) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..' || in_array($entry, $skip, true)) {
+            continue;
+        }
+        if ($rel !== '' && isset($only[$rel]) && !in_array($entry, $only[$rel], true)) {
+            continue;
+        }
+        $from = $src . '/' . $entry;
+        if (is_dir($from) && !is_link($from)) {
+            copy_tree($from, $dst . '/' . $entry, $skip, $only, $rel === '' ? $entry : $rel . '/' . $entry);
+        } elseif (is_file($from)) {
+            copy($from, $dst . '/' . $entry);
+        }
+    }
+}
+
+/**
+ * Optional: run the end-to-end tests through a real Apache httpd + PHP-FPM, so that the
+ * project's own .htaccess and .user.ini are what answers (the built-in server needs a
+ * router script that only imitates them). Enable with the environment variable
+ *
+ *   FAVA_TEST_APACHE='{"httpd":"/usr/sbin/apache2","fpm":"/usr/sbin/php-fpm8.3"}'
+ *
+ * Optional keys: "root" (ServerRoot holding modules/ and conf/mime.types), "modules"
+ * (module directory), "mime" (mime.types file), "fpm_ini" (php.ini for FPM),
+ * "fpm_env" / "httpd_env" (extra environment, e.g. LD_LIBRARY_PATH), "rewrite": false
+ * (leave mod_rewrite out, to test the index.php?r= fallback).
+ */
+function apache_setup(): ?array
+{
+    static $cfg = false;
+    if ($cfg === false) {
+        $cfg = null;
+        $raw = getenv('FAVA_TEST_APACHE');
+        if ($raw) {
+            $parsed = json_decode($raw, true);
+            if (!is_array($parsed) || empty($parsed['httpd']) || empty($parsed['fpm'])) {
+                fwrite(STDERR, "FAVA_TEST_APACHE must be JSON with \"httpd\" and \"fpm\"; using the built-in server.\n");
+            } else {
+                $cfg = $parsed;
+            }
+        }
+    }
+    return $cfg;
+}
+
+function start_apache_app(array $cfg, array $env, string $prefix, string $home, string $docRoot, string $appRoot): array
+{
+    $port = free_port();
+    $fpmPort = free_port();
+    while ($fpmPort === $port) {
+        $fpmPort = free_port();
+    }
+    $serverRoot = $cfg['root'] ?? dirname(dirname($cfg['httpd']));
+    $modDir = $cfg['modules'] ?? $serverRoot . '/modules';
+    $mime = $cfg['mime'] ?? $serverRoot . '/conf/mime.types';
+
+    $wanted = ['mpm_prefork', 'unixd', 'authz_core', 'authz_host', 'access_compat', 'log_config', 'mime', 'dir', 'alias', 'env',
+        'setenvif', 'headers', 'expires', 'negotiation', 'autoindex', 'proxy', 'proxy_fcgi'];
+    if (($cfg['rewrite'] ?? true) && empty($env['FAVA_TEST_NO_REWRITE'])) {
+        $wanted[] = 'rewrite';
+    }
+    $load = '';
+    foreach ($wanted as $m) {
+        if (is_file($modDir . '/mod_' . $m . '.so')) { // absent = compiled into the binary
+            $load .= 'LoadModule ' . $m . '_module "' . $modDir . '/mod_' . $m . '.so"' . "\n";
+        }
+    }
+    // Deliberately a host with unhelpful defaults: directory listings and MultiViews on,
+    // index.html as the only index. The project's .htaccess has to put all of that right.
+    $conf = 'ServerRoot "' . $serverRoot . '"' . "\n"
+        . 'Listen 127.0.0.1:' . $port . "\n"
+        . 'ServerName localhost' . "\n"
+        . 'PidFile "' . $home . '/httpd.pid"' . "\n"
+        . 'ErrorLog "' . $home . '/apache-error.log"' . "\n"
+        . 'LogLevel warn' . "\n"
+        . $load
+        . '<IfModule log_config_module>' . "\n"
+        . '    CustomLog "' . $home . '/apache-access.log" "%h %t \\"%r\\" %>s %b"' . "\n"
+        . '</IfModule>' . "\n"
+        . (is_file($mime) ? 'TypesConfig "' . $mime . '"' . "\n" : '')
+        . 'DirectoryIndex index.html' . "\n"
+        . 'DocumentRoot "' . $docRoot . '"' . "\n"
+        . '<Directory "' . $docRoot . '">' . "\n"
+        . '    Options Indexes FollowSymLinks MultiViews' . "\n"
+        . '    AllowOverride ' . ($env['FAVA_TEST_ALLOW_OVERRIDE'] ?? 'All') . "\n"
+        . '    Require all granted' . "\n"
+        . '</Directory>' . "\n"
+        . '<Files ".ht*">' . "\n" . '    Require all denied' . "\n" . '</Files>' . "\n"
+        . '<FilesMatch "\\.php$">' . "\n"
+        . '    SetHandler "proxy:fcgi://127.0.0.1:' . $fpmPort . '"' . "\n"
+        . '</FilesMatch>' . "\n";
+    file_put_contents($home . '/httpd.conf', $conf);
+
+    file_put_contents($home . '/php-fpm.conf', "[global]\n"
+        . 'error_log = ' . $home . "/fpm.log\n"
+        . "daemonize = no\n"
+        . "[www]\n"
+        . 'listen = 127.0.0.1:' . $fpmPort . "\n"
+        . "pm = static\n"
+        . "pm.max_children = 4\n"
+        . "clear_env = no\n"               // the workers see FAVA_CONFIG_DIR / FAVA_STORAGE_DIR
+        . "catch_workers_output = yes\n"
+        . "php_admin_flag[log_errors] = on\n"
+        . "php_admin_flag[display_errors] = off\n"
+        . 'php_admin_value[error_log] = ' . $home . "/php-errors.log\n");
+
+    // Apache signals its whole process group when it stops; without a session of its own
+    // that group would include this test run (and the terminal that started it).
+    $setsid = trim((string) @shell_exec('command -v setsid 2>/dev/null'));
+    if ($setsid === '') {
+        throw new \RuntimeException('FAVA_TEST_APACHE needs the «setsid» command (util-linux).');
+    }
+    $setsid = escapeshellarg($setsid) . ' ';
+    $fpmCmd = $setsid . escapeshellarg($cfg['fpm']) . ' -F -y ' . escapeshellarg($home . '/php-fpm.conf')
+        . (!empty($cfg['fpm_ini']) ? ' -c ' . escapeshellarg($cfg['fpm_ini']) : '');
+    start_background($fpmCmd, $home . '/fpm-out.log', $env + (array) ($cfg['fpm_env'] ?? []) + [
+        'FAVA_CONFIG_DIR' => $home . '/config',
+        'FAVA_STORAGE_DIR' => $home . '/storage',
+    ]);
+    if (!wait_for_port($fpmPort, 15)) {
+        throw new \RuntimeException('PHP-FPM did not start: ' . @file_get_contents($home . '/fpm-out.log') . @file_get_contents($home . '/fpm.log'));
+    }
+    $log = $home . '/apache-error.log';
+    $proc = start_background($setsid . escapeshellarg($cfg['httpd']) . ' -DFOREGROUND -f ' . escapeshellarg($home . '/httpd.conf'), $home . '/httpd-out.log', (array) ($cfg['httpd_env'] ?? []) + ['FAVA_APACHE' => '1']);
+    if (!wait_for_port($port, 15)) {
+        throw new \RuntimeException('Apache did not start: ' . @file_get_contents($home . '/httpd-out.log') . @file_get_contents($log));
+    }
+    return ['base' => 'http://127.0.0.1:' . $port . rtrim($prefix, '/'), 'home' => $home, 'log' => $log, 'port' => $port, 'proc' => $proc,
+        'server' => 'apache', 'root' => $appRoot] + app_dirs($env, $home, $appRoot);
 }
 
 /** PHP errors logged by the application server so far (should stay empty). */
 function app_errors(array $app): string
 {
     $out = '';
-    foreach ([$app['home'] . '/php-errors.log', $app['home'] . '/storage/logs/app.log'] as $f) {
+    $storage = $app['storage'] ?? $app['home'] . '/storage';
+    foreach ([$app['home'] . '/php-errors.log', $storage . '/logs/app.log'] as $f) {
         if (is_file($f)) {
             $out .= (string) file_get_contents($f);
         }
     }
-    foreach (glob($app['home'] . '/storage/logs/*.log') ?: [] as $f) {
+    foreach (glob($storage . '/logs/*.log') ?: [] as $f) {
         if (basename($f) !== 'app.log') {
             $out .= (string) file_get_contents($f);
         }
@@ -275,7 +433,19 @@ function app_errors(array $app): string
 function install_app(array $app, array $over = []): HttpClient
 {
     $c = new HttpClient($app['base']);
-    $r = $c->post('/install', $over + [
+    // What a browser does: open the site, land on the installer, let the page find out whether
+    // short addresses work on this server, and send the form to the address it names.
+    $page = $c->getFollow('/');
+    $action = '/install';
+    if (preg_match('/<form[^>]*\baction="([^"]+)"/', $page->body, $m)) {
+        $action = html_entity_decode($m[1], ENT_QUOTES);
+    }
+    if (!isset($over['pretty_urls'])) {
+        $probe = $c->get('/__rewrite_test', ['Accept: application/json']);
+        $json = $probe->status === 200 ? json_decode($probe->body, true) : null;
+        $over['pretty_urls'] = (is_array($json) && ($json['rewrite'] ?? '') === 'fava') ? '1' : '0';
+    }
+    $r = $c->post($action, $over + [
         'driver' => 'sqlite',
         'db_prefix' => 'fava_',
         'org_name' => 'پارک فاوا',
@@ -285,7 +455,6 @@ function install_app(array $app, array $over = []): HttpClient
         'admin_email' => 'admin@park.example.ir',
         'admin_pass' => 'Test-12345',
         'admin_pass2' => 'Test-12345',
-        'pretty_urls' => '1',
     ]);
     if ($r->status !== 302) {
         throw new TestFailure('installation failed with status ' . $r->status . ': ' . mb_substr(strip_tags($r->body), 0, 600));

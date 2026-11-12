@@ -176,6 +176,7 @@ $err = function (string $key) use ($errors) {
     t.textContent = text;
     t.className = 'block text-xs ' + (good ? 'text-slate-400' : (tone === 'red' ? 'text-red-600 font-semibold' : 'text-amber-700'));
   }
+  var storageOpen = false;
   // 1) does URL rewriting work?
   fetch(<?= json_out($rewriteProbe) ?>, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
     .then(function (r) { return r.ok ? r.json() : null; })
@@ -192,6 +193,7 @@ $err = function (string $key) use ($errors) {
     .then(function (r) { return r.ok ? r.text() : ''; })
     .then(function (t) {
       var open = t.indexOf('fava-storage-probe') !== -1;
+      storageOpen = open;
       mark('storage-check', !open, open
         ? 'پوشه storage از اینترنت قابل مشاهده است! فایل ‎.htaccess را هم بارگذاری کنید یا طبق راهنما پوشه‌های config و storage را بیرون از public_html ببرید.'
         : 'پوشه‌های config و storage از اینترنت بسته‌اند.', 'red');
@@ -207,6 +209,11 @@ $err = function (string $key) use ($errors) {
   document.querySelectorAll('input[name="driver"]').forEach(function (el) { el.addEventListener('change', sync); });
   sync();
   document.getElementById('install-form').addEventListener('submit', function (e) {
+    // uploaded proposals, the database and the logs would be readable by anyone: never install that silently
+    if (storageOpen && !window.confirm('هشدار امنیتی: پوشه storage از اینترنت قابل مشاهده است. در این وضعیت فایل طرح‌ها و پایگاه‌داده برای همه قابل دانلود خواهد بود.\n\nپیش از نصب، فایل‌های ‎.htaccess را بارگذاری کنید یا طبق راهنمای نصب پوشه‌های config و storage را بیرون از public_html ببرید.\n\nبا وجود این خطر، نصب ادامه پیدا کند؟')) {
+      e.preventDefault();
+      return;
+    }
     var b = e.target.querySelector('button[type="submit"]');
     b.disabled = true; b.textContent = 'در حال نصب…';
   });

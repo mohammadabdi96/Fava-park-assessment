@@ -7,8 +7,14 @@ Options -Indexes
 DirectoryIndex index.php
 AddDefaultCharset UTF-8
 
+# Hidden files and folders (.git, .user.ini, .htaccess …) are never served,
+# wherever they are. ".well-known" stays reachable so that AutoSSL / Let's
+# Encrypt keeps working.
+<IfModule mod_alias.c>
+    RedirectMatch 403 "/\.(?!well-known(/|$))"
+</IfModule>
+
 # Files that must never be downloaded (notes, logs, tool configs, dot-files).
-# ".well-known" stays reachable so that AutoSSL / Let's Encrypt keeps working.
 <FilesMatch "(^\.(?!well-known)|\.(md|log|sql|sh|py|ini|dist|bak|tmp|lock)$|^(composer\.json|package(-lock)?\.json|paths\.php)$)">
     <IfModule mod_authz_core.c>
         Require all denied
@@ -24,6 +30,8 @@ AddDefaultCharset UTF-8
 
     # Private folders: application code, configuration, uploaded proposals, logs
     RewriteRule ^(app|config|storage|dev|tests|docs)(/|$) - [F,L,NC]
+    # Hidden files and folders, once more (for servers without mod_alias)
+    RewriteRule (^|/)\.(?!well-known(/|$)) - [F,L]
 
     # Real files (CSS, JavaScript, font) are served as they are;
     # every other address is handled by the application.

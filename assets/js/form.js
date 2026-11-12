@@ -298,8 +298,17 @@
     }
     var tomanHint = byId('amount-toman');
     if (tomanHint) {
-      var req = a.requested_amount;
-      tomanHint.textContent = req ? ' مبلغ واردشده برابر است با ' + (req * 100 >= 1000 ? short(req / 10) + ' میلیارد تومان' : short(req * 100) + ' میلیون تومان') + '.' : '';
+      var req = a.requested_amount, typed = el.amount ? el.amount.value.replace(/\s/g, '') : '';
+      if (req) {
+        tomanHint.className = 'font-semibold text-blue-800';
+        tomanHint.textContent = ' مبلغ واردشده برابر است با ' + (req * 100 >= 1000 ? short(req / 10) + ' میلیارد تومان' : short(req * 100) + ' میلیون تومان') + '.';
+      } else if (typed !== '') {
+        // typed, but not a usable amount: say so instead of silently counting the field as empty
+        tomanHint.className = 'font-semibold text-red-600 block mt-1';
+        tomanHint.textContent = 'این مقدار به‌عنوان مبلغ خوانده نشد. فقط عددِ بزرگ‌تر از صفر وارد کنید و اعشار را با نقطه بنویسید (مثلاً 18.5).';
+      } else {
+        tomanHint.textContent = '';
+      }
     }
 
     /* milestone – technical judge only, not needed when the estimate is «reject» */

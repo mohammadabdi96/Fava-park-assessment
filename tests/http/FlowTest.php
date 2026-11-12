@@ -871,6 +871,72 @@ test('behind HTTPS the session cookie is marked Secure', function () {
     eq(200, $r->status);
 });
 
+test('config and storage can live outside the web root (paths.php), before or after installation', function () {
+    // before installation
+    $app = start_app([], '', true);
+    $private = $app['home'] . '/fava-private';
+    mkdir($private);
+    rename($app['root'] . '/config', $private . '/config');
+    rename($app['root'] . '/storage', $private . '/storage');
+    file_put_contents($app['root'] . '/paths.php', '<?php return ' . var_export(['config' => $private . '/config', 'storage' => $private . '/storage'], true) . ';' . "\n");
+    $app['config'] = $private . '/config';
+    $app['storage'] = $private . '/storage';
+    $c = install_app($app);
+    ok(is_file($private . '/config/config.php'), 'config.php went to the private folder');
+    eq(false, is_dir($app['root'] . '/config'), 'nothing was recreated inside the web root');
+    eq(false, is_dir($app['root'] . '/storage'));
+    $r = $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['a.docx', (string) file_get_contents(fixture('sample-proposal-3.docx'))]]);
+    eq('/admin/proposals/1', $r->location());
+    eq(1, count(glob($private . '/storage/uploads/*/*.docx') ?: glob($private . '/storage/uploads/*.docx') ?: []), 'the worksheet is stored outside the web root');
+    $anon = new HttpClient($app['base']);
+    $r = $anon->get('/paths.php');
+    ok(in_array($r->status, [403, 404], true), '/paths.php answered ' . $r->status);
+    lacks('fava-private', $r->body, 'the private location is not revealed');
+    ok(in_array($anon->get('/storage/probe.txt')->status, [403, 404], true));
+    $t = text_of($c->get('/admin/settings?tab=system'));
+    contains($private . '/storage', $t, 'the status page shows where the data really is');
+    eq('', app_errors($app));
+
+    // after installation: move the folders of a running system
+    $app = start_app([], '', true);
+    $c = install_app($app);
+    $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['b.docx', (string) file_get_contents(fixture('sample-proposal-1.docx'))]]);
+    $private = $app['home'] . '/moved';
+    mkdir($private);
+    rename($app['root'] . '/config', $private . '/config');
+    rename($app['root'] . '/storage', $private . '/storage');
+    file_put_contents($app['root'] . '/paths.php', '<?php return ' . var_export(['config' => $private . '/config', 'storage' => $private . '/storage'], true) . ';' . "\n");
+    $app['config'] = $private . '/config';
+    $app['storage'] = $private . '/storage';
+    $r = $c->get('/admin/proposals/1');
+    eq(200, $r->status, 'still installed, still logged in, the proposal is there');
+    $r = $c->get('/admin/proposals/1/file');
+    eq(200, $r->status);
+    eq('PK', substr($r->body, 0, 2), 'the stored worksheet is found in its new place');
+    eq(false, is_dir($app['root'] . '/storage'), 'and the old place stays empty');
+    eq('', app_errors($app));
+});
+
+test('missing guard files are put back before anything is stored', function () {
+    $app = start_app([], '', true);
+    // a file manager that hides dot-files: the upload arrived without them
+    unlink($app['root'] . '/config/.htaccess');
+    unlink($app['root'] . '/storage/.htaccess');
+    unlink($app['root'] . '/storage/probe.txt');
+    $c = new HttpClient($app['base']);
+    $r = $c->getFollow('/');
+    eq(200, $r->status);
+    contains('نصب', $r->body);
+    contains('Require all denied', (string) @file_get_contents($app['root'] . '/storage/.htaccess'), 'storage/.htaccess is back');
+    contains('Require all denied', (string) @file_get_contents($app['root'] . '/config/.htaccess'));
+    contains('fava-storage-probe', (string) @file_get_contents($app['root'] . '/storage/probe.txt'), 'and so is the file the exposure check asks for');
+
+    // an existing file is left alone
+    file_put_contents($app['root'] . '/storage/.htaccess', "# customised by the host\nRequire all denied\n");
+    $c->getFollow('/');
+    contains('customised by the host', (string) file_get_contents($app['root'] . '/storage/.htaccess'));
+});
+
 group('End-to-end: e-mail, and a proposal whose amount the judges enter');
 
 $mail = ['app' => null, 'admin' => null, 'smtp' => null, 'n' => 0, 'tokens' => []];
@@ -1083,6 +1149,9 @@ test('a proposal in the reject band: no milestone needed, rejection stores zero'
     contains('دلیل آن را بنویسید', $r->body, 'overruling the system needs a reason');
     $r = $c->submit('/admin/proposals/2/finalize', ['decision' => 'approve', 'amount' => '3', 'note' => 'اهمیت راهبردی برای استان']);
     contains('تصمیم نهایی ثبت شد', $r->body);
+    $t = text_of($c->get('/admin/activity?action=finalize'));
+    contains('تصمیم نهایی: تأیید با مبلغ ۳ میلیارد ریال', $t);
+    contains('توضیح مدیر: اهمیت راهبردی برای استان', $t, 'the reason for overruling the system is part of the audit trail');
 });
 
 test('with e-mail switched off, nothing is sent and the admin is told how to proceed', function () use (&$mail) {
@@ -1216,5 +1285,239 @@ if (is_array($mysqlEnv)) {
         $r = $c2->get('/admin/proposals/1');
         eq(200, $r->status);
         $drop();
+    });
+}
+
+// ---------------------------------------------------------------------------------------
+// Only with FAVA_TEST_APACHE: the same files an admin uploads, answered by a real Apache
+// with nothing but the project's own .htaccess and .user.ini to configure it.
+// ---------------------------------------------------------------------------------------
+if (apache_setup() !== null) {
+    group('On Apache httpd: the files as uploaded to public_html');
+
+    $site = ['app' => null, 'admin' => null];
+
+    test('a fresh copy of the files starts the installer and serves its assets', function () use (&$site) {
+        $site['app'] = $app = start_app([], '', true);
+        ok(is_file($app['root'] . '/.htaccess') && !is_dir($app['root'] . '/.git') && !is_dir($app['root'] . '/tests'), 'the copy looks like an upload');
+        $c = new HttpClient($app['base']);
+
+        $r = $c->get('/');
+        eq(302, $r->status, 'index.php is the directory index although the host default is index.html');
+        contains('Apache', (string) $r->header('server'), 'this really is Apache');
+        contains('install', $r->location());
+        $r = $c->getFollow('/');
+        eq(200, $r->status);
+        contains('نصب', $r->body);
+
+        $css = $c->get('/assets/css/app.css');
+        eq(200, $css->status);
+        contains('text/css', (string) $css->header('content-type'));
+        contains('max-age=2592000', (string) $css->header('cache-control'), 'long caching for versioned assets (mod_expires)');
+        $js = $c->get('/assets/js/form.js');
+        eq(200, $js->status);
+        contains('javascript', (string) $js->header('content-type'));
+        $font = $c->get('/assets/fonts/Vazirmatn-Variable.woff2');
+        eq(200, $font->status);
+        eq('font/woff2', (string) $font->header('content-type'));
+        eq('wOF2', substr($font->body, 0, 4));
+        contains('max-age=31536000', (string) $font->header('cache-control'));
+        $svg = $c->get('/assets/img/favicon.svg');
+        contains('image/svg+xml', (string) $svg->header('content-type'));
+
+        foreach (['/assets/', '/assets/css/', '/assets/fonts/'] as $dir) {
+            $r = $c->get($dir);
+            eq(403, $r->status, $dir . ' must not list its files');
+            lacks('Index of', $r->body);
+        }
+    });
+
+    test('installation writes into config/ and storage/, and neither can be read from outside', function () use (&$site) {
+        $app = $site['app'];
+        $c = $site['admin'] = install_app($app);
+        ok(is_file($app['config'] . '/config.php'), 'config.php was written inside the web root');
+        $db = glob($app['storage'] . '/database/*.sqlite');
+        eq(1, count($db));
+        eq($app['root'] . '/storage', $app['storage']);
+
+        $r = $c->get('/admin');
+        eq(200, $r->status, 'short addresses work: mod_rewrite was detected by the installer');
+        lacks('index.php?r=', $r->body);
+        eq(404, $c->get('/assets/css/missing.css')->status);
+
+        $r = $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['کاربرگ.docx', (string) file_get_contents(fixture('sample-proposal-1.docx'))]]);
+        eq('/admin/proposals/1', $r->location());
+        $stored = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($app['storage'] . '/uploads', \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $f) {
+            if ($f->isFile() && $f->getFilename() !== '.htaccess') {
+                $stored[] = substr($f->getPathname(), strlen($app['root']));
+            }
+        }
+        ok(count($stored) >= 1, 'the uploaded worksheet is on disk');
+        file_put_contents($app['storage'] . '/logs/app-test.log', "secret line\n");
+        mkdir($app['root'] . '/.git');
+        file_put_contents($app['root'] . '/.git/config', "[remote]\n\turl = https://token@example.org/repo.git\n");
+        file_put_contents($app['root'] . '/.env', "KEY=secret\n");
+
+        $anon = new HttpClient($app['base']);
+        $private = array_merge($stored, [
+            '/config/config.php', '/config/', '/config',
+            '/storage/probe.txt', '/storage/', '/storage', '/storage/database/' . basename($db[0]), '/storage/logs/app-test.log', '/storage/uploads/',
+            '/app/bootstrap.php', '/app/Views/admin/dashboard.php', '/app/', '/app/form_definition.php',
+            '/.htaccess', '/.user.ini', '/.gitignore', '/.gitattributes', '/.git/config', '/.git/', '/.env',
+            '/README.md', '/docs/', '/tests/run.php', '/dev/router.php',
+            // the same things asked for in less obvious ways
+            '/STORAGE/probe.txt', '/Storage/Probe.txt', '/CONFIG/config.php', '/App/bootstrap.php',
+            '//storage/probe.txt', '/storage//probe.txt', '/./storage/probe.txt', '/assets/../storage/probe.txt', '/assets/..%2fstorage/probe.txt',
+            '/%73torage/probe.txt', '/storage/probe.txt/', '/storage/probe.txt?x=1', '/index.php/../storage/probe.txt',
+            '/storage/probe.txt%00.css', '/storage/probe.txt%20', '/storage/probe.TXT',
+        ]);
+        foreach ($private as $path) {
+            $r = $anon->get($path);
+            ok(in_array($r->status, [403, 404, 400], true), $path . ' answered ' . $r->status);
+            lacks('fava-storage-probe', $r->body, $path);
+            lacks('app_key', $r->body, $path);
+            lacks('secret', $r->body, $path);
+            lacks('SQLite format', $r->body, $path);
+            lacks('PK' . "\x03\x04", $r->body, $path . ' (the stored Word file)');
+            lacks('<?php', $r->body, $path . ' (source code)');
+        }
+        eq(403, $anon->get('/storage/probe.txt')->status, 'refused, not just «not found»');
+        eq(403, $anon->get('/config/config.php')->status);
+        eq(403, $anon->get('/.git/config')->status);
+        eq(403, $anon->get($stored[0])->status);
+
+        // certificate renewal (AutoSSL / Let's Encrypt) must keep working
+        mkdir($app['root'] . '/.well-known/acme-challenge', 0777, true);
+        file_put_contents($app['root'] . '/.well-known/acme-challenge/token123', 'token123.proof');
+        $r = $anon->get('/.well-known/acme-challenge/token123');
+        eq(200, $r->status);
+        eq('token123.proof', $r->body);
+    });
+
+    test('.user.ini raises the upload limits, and the status page says what the host allows', function () use (&$site) {
+        $c = $site['admin'];
+        $r = $c->get('/admin/settings?tab=system');
+        eq(200, $r->status);
+        $t = text_of($r);
+        contains('fpm-fcgi', $t, 'PHP runs as PHP-FPM, as on most cPanel hosts');
+        contains('upload_max_filesize = 32M', $t, 'taken from the project\'s .user.ini (PHP\'s own default is 2M)');
+        contains('post_max_size = 40M', $t);
+
+        // a worksheet above PHP's default limits (2M per file, 8M per request) but inside ours
+        $big = (string) file_get_contents(docx_with_body(wp('عنوان طرح: طرح حجیم') . wp(str_repeat('متن ', 50)), ['word/media/image1.bin' => random_bytes(9 * 1024 * 1024)]));
+        ok(strlen($big) > 8 * 1024 * 1024, 'the test file is ' . strlen($big) . ' bytes');
+        $r = $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['big.docx', $big]]);
+        eq(302, $r->status);
+        eq('/admin/proposals/2', $r->location(), 'a 9 MB worksheet is accepted');
+    });
+
+    test('the whole assessment works behind Apache', function () use (&$site) {
+        $app = $site['app'];
+        $c = $site['admin'];
+        $r = $c->submit('/admin/proposals/1/update', ['action' => 'confirm', 'title' => 'سامانه هوشمند پایش مصرف انرژی', 'company' => 'داده‌پردازان نوآور البرز', 'requested_amount' => '18.5', 'share_doc' => '1', 'share_file' => '1']);
+        contains('اطلاعات طرح تأیید شد', $r->body);
+        $r = $c->submit('/admin/proposals/1/assign/tech', ['name' => 'دکتر رضا فنی‌پور']);
+        $tech = page_tokens($r)[0];
+        $r = $c->submit('/admin/proposals/1/assign/biz', ['name' => 'مهندس مریم بازارگان']);
+        $biz = array_values(array_diff(page_tokens($r), [$tech]))[0];
+
+        $judge = new HttpClient($app['base']);
+        $r = $judge->get('/f/' . $tech);
+        eq(200, $r->status);
+        contains('داور فنی', $r->body);
+        eq(200, $judge->postJson('/f/' . $tech . '/draft', ['open' => true, 'answers' => ['scores' => ['tech-1' => 4]]])->status);
+        eq(200, $judge->postJson('/f/' . $tech . '/submit', ['answers' => browser_answers('tech', [4, 5, 3, 4, 4])])->status);
+        eq(200, $judge->postJson('/f/' . $biz . '/submit', ['answers' => browser_answers('biz', [5])])->status);
+        $r = $judge->get('/f/' . $tech . '/file');
+        eq(200, $r->status, 'the judge downloads the worksheet through the application, not from the folder');
+        eq('PK', substr($r->body, 0, 2));
+        contains("filename*=UTF-8''", (string) $r->header('content-disposition'), 'the Persian file name survives the web server');
+
+        $r = $c->get('/admin/proposals/1');
+        contains('۱۸.۳۱۵', text_of($r));
+        $r = $c->submit('/admin/proposals/1/finalize', ['decision' => 'approve', 'amount' => '18.315']);
+        contains('تصمیم نهایی ثبت شد', $r->body);
+        $r = $c->get('/admin/export/proposals');
+        eq(200, $r->status);
+        contains('text/csv', (string) $r->header('content-type'));
+        eq("\xEF\xBB\xBF", substr($r->body, 0, 3), 'the byte-order mark Excel needs is not eaten on the way');
+        eq(200, $c->get('/admin/proposals/1/report')->status);
+
+        eq(404, $judge->get('/f/' . str_repeat('a', 32))->status);
+        eq(404, $c->get('/admin/nothing-here')->status);
+        contains('صفحه پیدا نشد', $c->get('/admin/nothing-here')->body, 'unknown addresses get the application\'s own page');
+        eq(419, $c->post('/admin/proposals/1/delete', ['_csrf' => 'wrong'])->status);
+
+        $bad = array_filter(explode("\n", app_errors($app)), function ($line) {
+            return (bool) preg_match('/PHP (warning|deprecation|notice|fatal)|Exception|Error:/i', $line);
+        });
+        eq([], array_values(array_slice($bad, 0, 3)), 'nothing in the PHP or application error log');
+        $apacheLog = is_file($app['log']) ? (string) file_get_contents($app['log']) : '';
+        lacks('.htaccess:', $apacheLog, 'Apache accepted every line of the .htaccess files');
+        lacks('not allowed here', $apacheLog);
+        lacks('Invalid command', $apacheLog);
+    });
+
+    group('On Apache httpd: hosts that are set up differently');
+
+    test('in a sub-folder (example.ir/assess) no RewriteBase is needed', function () {
+        $app = start_app([], '/assess');
+        $c = install_app($app);
+        $r = $c->get('/admin');
+        eq(200, $r->status);
+        contains('href="/assess/assets/css/app.css', $r->body);
+        eq(200, $c->get('/assets/css/app.css')->status);
+        eq(403, (new HttpClient($app['base']))->get('/storage/probe.txt')->status);
+        eq(403, (new HttpClient($app['base']))->get('/app/bootstrap.php')->status);
+        $r = $c->post('/admin/proposals/upload', ['_csrf' => $c->csrf()], ['files[]' => ['a.docx', (string) file_get_contents(fixture('sample-proposal-3.docx'))]]);
+        eq('/assess/admin/proposals/1', $r->location());
+        lacks('.htaccess:', is_file($app['log']) ? (string) file_get_contents($app['log']) : '');
+    });
+
+    test('without mod_rewrite the installer notices, everything runs through index.php?r=, and the folders stay closed', function () {
+        $app = start_app(['FAVA_TEST_NO_REWRITE' => '1'], '', true);
+        $c = new HttpClient($app['base']);
+        $r = $c->get('/');
+        eq(302, $r->status);
+        contains('index.php?r=', $r->location(), 'before installation only the address form that works everywhere is used');
+        $r = $c->getFollow('/');
+        eq(200, $r->status);
+        contains('نصب', $r->body);
+        eq(404, $c->get('/__rewrite_test')->status, 'the probe the installer page uses fails, so it chooses index.php?r=');
+
+        $c = install_app($app); // finds out by itself, as the installer page does
+        eq(true, (require $app['config'] . '/config.php')['pretty_urls'] === false, 'the installer stored «no short addresses»');
+        $r = $c->get('/index.php?r=/admin');
+        eq(200, $r->status);
+        contains('index.php?r=', $r->body);
+        preg_match('/name="_csrf" value="([^"]+)"/', $r->body, $tok);
+        $r = $c->post('/index.php?r=/admin/proposals/upload', ['_csrf' => $tok[1]], ['files[]' => ['a.docx', (string) file_get_contents(fixture('sample-proposal-3.docx'))]]);
+        eq(302, $r->status);
+        contains('index.php?r=', $r->location());
+
+        mkdir($app['root'] . '/.git');
+        file_put_contents($app['root'] . '/.git/config', "url = https://token@example.org\n");
+        $anon = new HttpClient($app['base']);
+        foreach (['/config/config.php', '/storage/probe.txt', '/storage/database/' . basename(glob($app['storage'] . '/database/*.sqlite')[0]),
+            '/app/bootstrap.php', '/.user.ini', '/.htaccess', '/README.md', '/.git/config', '/docs/'] as $path) {
+            $r = $anon->get($path);
+            eq(403, $r->status, $path . ' is closed by the folder\'s own .htaccess');
+        }
+        lacks('.htaccess:', is_file($app['log']) ? (string) file_get_contents($app['log']) : '');
+    });
+
+    test('a host that ignores .htaccess leaves storage open — and the probe the app warns with can see it', function () {
+        $app = start_app(['FAVA_TEST_ALLOW_OVERRIDE' => 'None', 'FAVA_TEST_NO_REWRITE' => '1'], '', true);
+        $anon = new HttpClient($app['base']);
+        $r = $anon->get('/storage/probe.txt');
+        eq(200, $r->status, 'this is the unsafe situation the installer and the status page look for');
+        contains('fava-storage-probe', $r->body);
+        $r = $anon->get('/index.php?r=/install');
+        eq(200, $r->status, 'the application itself still runs');
+        contains('/storage/probe.txt', $r->body, 'the installer page checks the folder from the browser');
+        $r = $anon->get('/config/config.php');
+        ok($r->status === 404 || trim($r->body) === '', 'even then config.php prints nothing');
     });
 }

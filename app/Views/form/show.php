@@ -384,7 +384,7 @@ $scoreDigits = ['', '۱', '۲', '۳', '۴', '۵'];
       </div>
       <div id="submit-error" class="alert alert-error hidden" role="alert"></div>
       <button id="submit-btn" type="button" disabled class="w-full py-4 rounded-xl text-white font-bold text-base transition-all flex items-center justify-center gap-3">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        <?= icon('send', 'w-6 h-6') ?>
         <span id="submit-btn-text"><?= $preview ? 'ثبت نهایی (در پیش‌نمایش غیرفعال است)' : 'ثبت نهایی و ارسال به دبیرخانه' ?></span>
       </button>
     </div>
