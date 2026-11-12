@@ -28,12 +28,18 @@
   /** fixed number of decimals, Persian digits (same rounding as the admin panel) */
   function fx(n, decimals) { return toFa(S.round(n, decimals).toFixed(decimals)); }
   /** up to two decimals, no trailing zeros */
-  function short(n) { return toFa(String(parseFloat(Number(n).toFixed(2)))); }
+  function short(n) { return toFa(String(parseFloat(Number(n).toFixed(3)))); }
+  /** Same rule as Fa::number() on the server; an amount must be above zero. */
   function parseAmount(value) {
-    var s = toLatin(value || '').replace(/[٬,\s]/g, '').replace(/[٫\/]/g, '.');
-    if (s === '' || !/^\d*\.?\d+$/.test(s)) { return null; }
+    var s = toLatin(String(value || '')).replace(/[\s\u00A0\u200C\u200E\u200F]/g, '').replace(/٫/g, '.').replace(/[٬،]/g, ',');
+    if (/^\d+\/\d+$/.test(s)) { s = s.replace('/', '.'); }
+    if (s.indexOf(',') !== -1) {
+      if (!/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) { return null; }
+      s = s.replace(/,/g, '');
+    }
+    if (!/^(\d+\.?\d*|\.\d+)$/.test(s)) { return null; }
     var n = parseFloat(s);
-    return (n > 0 && n <= 1000000) ? Math.round(n * 1000) / 1000 : null;
+    return (n > 0 && n <= 1000000) ? S.round(n, 3) : null;
   }
   function setText(id, text) { var el = byId(id); if (el) { el.textContent = text; } }
 
@@ -361,7 +367,11 @@
   function setStatus(text, tone) {
     if (!el.status) { return; }
     el.status.textContent = text;
-    el.status.className = tone === 'bad' ? 'text-red-600 font-semibold' : (tone === 'ok' ? 'text-emerald-600' : 'text-gray-400');
+    el.status.title = text; // the whole message, should the narrow bar of a phone cut it
+    var tones = ['text-red-600', 'font-semibold', 'text-emerald-600', 'text-gray-400'];
+    tones.forEach(function (c) { el.status.classList.remove(c); });
+    (tone === 'bad' ? ['text-red-600', 'font-semibold'] : (tone === 'ok' ? ['text-emerald-600'] : ['text-gray-400']))
+      .forEach(function (c) { el.status.classList.add(c); });
   }
   function localSave(synced) {
     if (!storage || !key || preview) { return; }

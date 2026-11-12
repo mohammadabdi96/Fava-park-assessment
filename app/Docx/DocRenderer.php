@@ -70,7 +70,7 @@ class DocRenderer
         }
         if (isset($b['l'])) {
             $level = min(4, max(0, (int) $b['l'][0]));
-            return '<p class="dx-li dx-l' . $level . trim(' ' . $class) . '" dir="auto"><span class="dx-mk">'
+            return '<p class="dx-li dx-l' . $level . $class . '" dir="auto"><span class="dx-mk">'
                 . htmlspecialchars((string) $b['l'][2], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>' . $inner . '</p>';
         }
         return '<p' . ($class !== '' ? ' class="' . trim($class) . '"' : '') . ' dir="auto">' . $inner . '</p>';

@@ -407,7 +407,11 @@ $n = function ($v) {
       <div class="alert alert-info" id="storage-status"><span class="shrink-0"><?= icon('lock') ?></span><div data-text>در حال بررسی دسترسی اینترنتی به پوشه‌های خصوصی…</div></div>
       <div>
         <h3 class="font-bold text-slate-900">پشتیبان‌گیری</h3>
-        <p>برای پشتیبان کامل، این دو مورد را نگه دارید: پایگاه‌داده (از phpMyAdmin یا ابزار Backup در cPanel) و پوشه <span class="ltr font-mono">storage/uploads</span> که فایل‌های Word طرح‌ها در آن است. فایل <span class="ltr font-mono">config/config.php</span> را هم همراه آن‌ها نگه دارید.</p>
+        <?php if (!empty($sqlite)): ?>
+          <p>برای پشتیبان کامل، کل پوشه <span class="ltr font-mono">storage</span> را نگه دارید: هم پایگاه‌داده (<span class="ltr font-mono">storage/database</span>) و هم فایل‌های Word طرح‌ها (<span class="ltr font-mono">storage/uploads</span>) در آن است. فایل <span class="ltr font-mono">config/config.php</span> را هم همراه آن نگه دارید.</p>
+        <?php else: ?>
+          <p>برای پشتیبان کامل، این دو مورد را نگه دارید: پایگاه‌داده (از phpMyAdmin یا ابزار Backup در cPanel) و پوشه <span class="ltr font-mono">storage/uploads</span> که فایل‌های Word طرح‌ها در آن است. فایل <span class="ltr font-mono">config/config.php</span> را هم همراه آن‌ها نگه دارید.</p>
+        <?php endif; ?>
       </div>
       <div>
         <h3 class="font-bold text-slate-900">فراموشی رمز مدیر</h3>

@@ -8,14 +8,56 @@ use Fava\Core\Jalali;
 /**
  * All calculations of the assessment form, as pure functions.
  * assets/js/scoring.js mirrors judge() so the judge sees in the browser exactly what
- * the server computes; tests/ScoringTest compares the two implementations.
+ * the server computes; tests/unit/02_ScoringTest.php compares the two implementations.
  */
 class Scoring
 {
+    /**
+     * Rounding (half up) written out by hand: PHP's round() changed its edge cases
+     * between versions and differs from JavaScript, while this formula gives the same
+     * double everywhere. The browser copy uses the identical expression.
+     */
+    public static function round(float $v, int $decimals): float
+    {
+        $f = (float) pow(10, $decimals);
+        return floor($v * $f + 0.5 + 1e-9) / $f;
+    }
+
+    /**
+     * Split an amount (billion rials, three decimals = one million rials) into the staged
+     * payments. Each stage is rounded on its own, except the last one that pays anything:
+     * it receives what is left, so that the stages always add up to the amount exactly
+     * (30% + 40% + 30% of 14.652 would otherwise give 14.653).
+     *
+     * @param array $percents e.g. [30, 40, 30]
+     * @return array<int, array{pct: float, amount: float}>
+     */
+    public static function payments(float $amount, array $percents): array
+    {
+        $percents = array_map('floatval', array_values($percents));
+        $total = (int) self::round(max(0.0, $amount) * 1000, 0); // in millions of rials
+        $closing = null;
+        if (abs(array_sum($percents) - 100) < 0.0001) {
+            foreach ($percents as $i => $pct) {
+                if ($pct > 0) {
+                    $closing = $i;
+                }
+            }
+        }
+        $out = [];
+        $paid = 0;
+        foreach ($percents as $i => $pct) {
+            $part = $i === $closing ? $total - $paid : (int) self::round($total * $pct / 100, 0);
+            $paid += $part;
+            $out[] = ['pct' => $pct, 'amount' => $part / 1000.0]; // «/ 1000» would give an int for round figures
+        }
+        return $out;
+    }
+
     /** Avoid 59.99999999 vs 60 surprises at the decision thresholds. */
     private static function r6(float $v): float
     {
-        return round($v, 6);
+        return self::round($v, 6);
     }
 
     public static function tier(?string $scalability, ?string $priority): ?string
@@ -238,10 +280,7 @@ class Scoring
 
         // --- amount --------------------------------------------------------------------
         $a = self::amount($requested, $ceiling, $total, $coeff, $cfg);
-        $payments = [];
-        foreach ($cfg['payment'] as $i => $pct) {
-            $payments[] = ['pct' => $pct, 'amount' => round($a['amount'] * $pct / 100, 3)];
-        }
+        $payments = self::payments((float) $a['amount'], $cfg['payment']);
 
         $order = ['reject' => 0, 'conditional' => 1, 'approve' => 2];
         $divergence = abs($order[$tech['estimated_decision']] - $order[$biz['estimated_decision']]) >= 2;
@@ -250,7 +289,7 @@ class Scoring
             'dims' => $dims,
             'tech_share' => $tech['share'],
             'biz_share' => $biz['share'],
-            'total' => round($total, 2),
+            'total' => self::round($total, 2),
             'decision' => $decision,
             'tier_tech' => $tech['tier'],
             'tier_biz' => $biz['tier'],
@@ -270,8 +309,8 @@ class Scoring
             'risk_avg' => $riskAvg,
             'coeff' => $coeff,
             'base' => $a['base'],
-            'amount_raw' => round($a['raw'], 3),
-            'amount' => round($a['amount'], 3),
+            'amount_raw' => self::round($a['raw'], 3),
+            'amount' => self::round($a['amount'], 3),
             'capped' => $a['capped'],
             'payments' => $payments,
             'needs_resolution' => ($tierSource === 'provisional') || $amountConflict,
@@ -329,7 +368,7 @@ class Scoring
         if (isset($in['requested_amount']) && $in['requested_amount'] !== '' && $in['requested_amount'] !== null) {
             $n = Fa::number(is_scalar($in['requested_amount']) ? (string) $in['requested_amount'] : '');
             if ($n !== null && $n > 0 && $n <= 1000000) {
-                $out['requested_amount'] = round($n, 3);
+                $out['requested_amount'] = self::round($n, 3);
             }
         }
         if (isset($in['reasons']) && is_array($in['reasons'])) {
@@ -403,9 +442,10 @@ class Scoring
         if (Jalali::parse((string) ($a['date'] ?? '')) === null) {
             $errors['date'] = 'تاریخ تکمیل فرم را به شکل ۱۴۰۵/۰۸/۲۰ وارد کنید.';
         }
-        if ($role === 'tech' && !$errors) {
+        if ($role === 'tech' && ($a['milestone2'] ?? '') === '') {
+            // same rule as the browser: only an estimate in the reject band makes it optional
             $m = self::judge($role, $a, $cfg, $fixedAmount);
-            if ($m['estimated_decision'] !== 'reject' && ($a['milestone2'] ?? '') === '') {
+            if ($m['estimated_decision'] !== 'reject') {
                 $errors['milestone2'] = 'تعریف مایلستون فنی مرحله ۲ برای طرح‌های تأییدشده یا مشروط الزامی است.';
             }
         }

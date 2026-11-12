@@ -9,7 +9,16 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  function r6(v) { return Math.round(v * 1e6) / 1e6; }
+  /*
+   * Rounding (half up) with exactly the expression of Scoring::round() in PHP, so that
+   * both sides arrive at the same double for the same input.
+   */
+  function round(value, decimals) {
+    var f = Math.pow(10, decimals);
+    return Math.floor(Number(value) * f + 0.5 + 1e-9) / f;
+  }
+
+  function r6(v) { return round(v, 6); }
 
   function tier(scalability, priority) {
     if (!scalability || !priority) return null;
@@ -106,12 +115,6 @@
       risk_avg: riskAvg !== null ? r6(riskAvg) : null, coeff: coeff,
       requested: requested, estimate: estimate
     };
-  }
-
-  /* PHP-like decimal rounding, so the browser shows the same digits as the admin panel. */
-  function round(value, decimals) {
-    var n = Number(Math.round(Number(value + 'e' + decimals)) + 'e-' + decimals);
-    return isNaN(n) ? Number(Number(value).toFixed(decimals)) : n;
   }
 
   return { tier: tier, trlRisk: trlRisk, coefficient: coefficient, decision: decision, amount: amount, judge: judge, round: round, r6: r6 };

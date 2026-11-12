@@ -29,10 +29,16 @@ $reviewed = !empty($p['reviewed_at']);
 $finalized = !empty($p['finalized_at']);
 
 // what should the admin do next?
-$missing = [];
+$unassigned = [];
+$unsent = [];
+$waiting = [];
 foreach (['tech', 'biz'] as $role) {
-    if (!$as[$role] || $as[$role]['status'] !== 'submitted') {
-        $missing[] = role_label($role);
+    if (!$as[$role]) {
+        $unassigned[] = role_label($role);
+    } elseif ($as[$role]['status'] === 'pending') {
+        $unsent[] = role_label($role);
+    } elseif ($as[$role]['status'] !== 'submitted') {
+        $waiting[] = role_label($role);
     }
 }
 if ($status === 'review') {
@@ -40,7 +46,18 @@ if ($status === 'review') {
 } elseif ($status === 'ready') {
     $next = [(!$as['tech'] || !$as['biz']) ? 'داور فنی و داور کسب‌وکاری را تعیین کنید و پیوند اختصاصی هر کدام را بفرستید.' : 'پیوند اختصاصی را برای داوران ایمیل کنید یا آن را کپی و خودتان بفرستید.', '#judges'];
 } elseif ($status === 'judging') {
-    $next = ['در انتظار ثبت فرم: ' . implode(' و ', $missing) . '.' . ((!$as['tech'] || !$as['biz']) ? ' هنوز برای یکی از نقش‌ها داور تعیین نشده است.' : ''), '#judges'];
+    // say first what only the admin can do; a judge who never got the link will never answer
+    $parts = [];
+    if ($unassigned) {
+        $parts[] = implode(' و ', $unassigned) . ' هنوز تعیین نشده است؛ داور را انتخاب کنید و پیوند او را بفرستید.';
+    }
+    if ($unsent) {
+        $parts[] = 'پیوند ' . implode(' و ', $unsent) . ' هنوز ارسال نشده است؛ آن را ایمیل کنید یا کپی کنید و خودتان بفرستید.';
+    }
+    if ($waiting) {
+        $parts[] = 'در انتظار ثبت فرم ' . implode(' و ', $waiting) . '.';
+    }
+    $next = [implode(' ', $parts), '#judges'];
 } elseif ($status === 'completed') {
     $next = $result && $result['needs_resolution']
         ? ['نظر دو داور درباره سطح طرح یا مبلغ درخواستی یکسان نیست. آن را مشخص کنید تا مبلغ قطعی محاسبه شود.', '#resolve']
@@ -97,7 +114,7 @@ $actors = ['admin' => 'مدیر', 'judge' => 'داور', 'system' => 'سامان
 
 <?= View::partial('admin/proposal_judges', compact('p', 'as', 'links', 'judges', 'mailReady', 'mails', 'reviewed', 'finalized', 'id')) ?>
 
-<?= View::partial('admin/proposal_result', compact('p', 'as', 'answers', 'cfg', 'def', 'result', 'finalized', 'id', 'missing', 'configChanged')) ?>
+<?= View::partial('admin/proposal_result', compact('p', 'as', 'answers', 'cfg', 'def', 'result', 'finalized', 'id', 'configChanged')) ?>
 
 <!-- history -->
 <section id="log" class="card mt-6 scroll-mt-6">

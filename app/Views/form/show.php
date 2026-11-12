@@ -72,10 +72,10 @@ $scoreDigits = ['', '۱', '۲', '۳', '۴', '۵'];
       </div>
     </div>
 
-    <div class="mt-4 flex items-center gap-2 text-xs overflow-x-auto pb-1" id="stepper">
+    <div class="mt-4 flex items-center justify-between sm:justify-start gap-1 sm:gap-2 text-xs overflow-x-auto pb-1" id="stepper">
       <?php foreach ([1 => ['طبقه‌بندی', '#layer-1'], 2 => ['امتیازدهی', '#layer-2'], 3 => ['ریسک', '#layer-3'], 4 => ['جمع‌بندی', '#summary']] as $n => $st): ?>
-        <?php if ($n > 1): ?><div class="h-px bg-blue-400/40 w-6 shrink-0"></div><?php endif; ?>
-        <a href="<?= e($st[1]) ?>" class="flex items-center gap-2 shrink-0" data-step="<?= $n ?>"><span class="fstep-dot todo"><?= fa((string) $n) ?></span><span class="text-blue-100"><?= e($st[0]) ?></span></a>
+        <?php if ($n > 1): ?><div class="h-px bg-blue-400/40 w-6 shrink-0 hidden sm:block"></div><?php endif; ?>
+        <a href="<?= e($st[1]) ?>" class="flex items-center gap-1 sm:gap-2 shrink-0" data-step="<?= $n ?>"><span class="fstep-dot todo"><?= fa((string) $n) ?></span><span class="text-blue-100"><?= e($st[0]) ?></span></a>
       <?php endforeach; ?>
     </div>
   </div>
@@ -83,22 +83,21 @@ $scoreDigits = ['', '۱', '۲', '۳', '۴', '۵'];
 
 <!-- Sticky -->
 <div id="sticky-summary" class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm no-print">
-  <div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-3 flex-wrap text-xs">
-    <div class="flex items-center gap-4 flex-wrap">
-      <div class="flex items-center gap-1.5"><span class="text-gray-500">نقش:</span><span id="sum-role" class="font-bold text-blue-700"><?= e(role_label($role)) ?></span></div>
+  <?php /* phone: two tidy rows (figures | progress, then save status | worksheet button); wider screens: one row */ ?>
+  <div class="max-w-6xl mx-auto px-4 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:flex items-center gap-x-3 gap-y-1.5 text-xs">
+    <div class="flex items-center gap-4 min-w-0 sm:order-1 sm:me-auto">
+      <div class="hidden sm:flex items-center gap-1.5"><span class="text-gray-500">نقش:</span><span id="sum-role" class="font-bold text-blue-700"><?= e(role_label($role)) ?></span></div>
       <div class="flex items-center gap-1.5"><span class="text-gray-500">سطح:</span><span id="sum-tier" class="font-bold text-blue-700">—</span></div>
-      <div class="flex items-center gap-1.5"><span class="text-gray-500">سهم از امتیاز:</span><span id="sum-share" class="font-bold text-blue-700">—</span></div>
+      <div class="flex items-center gap-1.5 whitespace-nowrap"><span class="text-gray-500">سهم از امتیاز:</span><span id="sum-share" class="font-bold text-blue-700">—</span></div>
     </div>
-    <div class="flex items-center gap-3">
-      <span id="save-status" class="text-gray-400" aria-live="polite"><?= $preview ? 'پیش‌نمایش' : ($savedAt ? 'آخرین ذخیره: ' . e(jdate($savedAt, 'H:i')) : 'پاسخ‌ها خودکار ذخیره می‌شود') ?></span>
-      <div class="flex items-center gap-2">
-        <div class="w-24 sm:w-32 bg-gray-200 rounded-full h-2 overflow-hidden"><div id="progress-fill" class="h-2 rounded-full bg-red-400" style="width:0%"></div></div>
-        <span id="progress-text" class="font-bold text-gray-500">۰٪</span>
-      </div>
-      <?php if ($docHtml !== null): ?>
-        <button type="button" class="btn btn-soft btn-sm" data-drawer-open><?= icon('doc', 'w-4 h-4') ?> متن کاربرگ طرح</button>
-      <?php endif; ?>
+    <div class="flex items-center gap-2 justify-self-end sm:order-3">
+      <div class="w-20 sm:w-32 bg-gray-200 rounded-full h-2 overflow-hidden"><div id="progress-fill" class="h-2 rounded-full bg-red-400" style="width:0%"></div></div>
+      <span id="progress-text" class="font-bold text-gray-500">۰٪</span>
     </div>
+    <span id="save-status" class="text-gray-400 min-w-0 leading-4 line-clamp-2 sm:order-2" aria-live="polite"><?= $preview ? 'پیش‌نمایش' : ($savedAt ? 'آخرین ذخیره: ' . e(jdate($savedAt, 'H:i')) : 'پاسخ‌ها خودکار ذخیره می‌شود') ?></span>
+    <?php if ($docHtml !== null): ?>
+      <button type="button" class="btn btn-soft btn-sm justify-self-end sm:order-4" data-drawer-open><?= icon('doc', 'w-4 h-4') ?> متن کاربرگ طرح</button>
+    <?php endif; ?>
   </div>
 </div>
 

@@ -83,8 +83,8 @@ $filtered = $filter['q'] !== '' || $filter['status'] !== '' || $filter['decision
             $decision = $p['final_decision'] ?: $p['system_decision']; ?>
           <tr>
             <td class="num ltr text-xs text-slate-500 whitespace-nowrap"><?= e($p['code']) ?></td>
-            <td class="max-w-[22rem]">
-              <a href="<?= e(url('/admin/proposals/' . $p['id'])) ?>" class="font-semibold text-slate-900 hover:text-brand-800 block truncate"><?= e($p['title'] ?: 'بدون عنوان') ?></a>
+            <td class="w-full max-w-0 min-w-[14rem]">
+              <a href="<?= e(url('/admin/proposals/' . $p['id'])) ?>" class="font-semibold text-slate-900 hover:text-brand-800 block truncate" title="<?= e($p['title']) ?>"><?= e($p['title'] ?: 'بدون عنوان') ?></a>
               <span class="text-xs text-slate-500 block truncate"><?= e($p['company'] ?: '—') ?></span>
             </td>
             <td>

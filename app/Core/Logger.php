@@ -16,9 +16,18 @@ class Logger
 
     public static function exception(\Throwable $e, string $where = ''): void
     {
+        // a judge link is a credential: keep only its first characters
+        $where = (string) preg_replace('#/f/([A-Za-z0-9_\-]{6})[A-Za-z0-9_\-]+#', '/f/$1…', $where);
+        // places and function names only – never the arguments, which may hold passwords
+        $trace = [];
+        foreach (array_slice($e->getTrace(), 0, 12) as $i => $frame) {
+            $trace[] = '#' . $i . ' '
+                . (isset($frame['file']) ? $frame['file'] . '(' . (int) ($frame['line'] ?? 0) . ')' : '[internal]') . ': '
+                . (isset($frame['class']) ? $frame['class'] . ($frame['type'] ?? '::') : '') . ($frame['function'] ?? '') . '()';
+        }
         self::write('ERROR', ($where !== '' ? $where . ': ' : '') . get_class($e) . ': ' . $e->getMessage(), [
             'file' => $e->getFile() . ':' . $e->getLine(),
-            'trace' => array_slice(explode("\n", $e->getTraceAsString()), 0, 12),
+            'trace' => $trace,
         ]);
     }
 

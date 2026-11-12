@@ -170,11 +170,12 @@ $facts = $fields['company_facts'] ?? [];
     <table class="tbl border border-slate-200">
       <thead><tr><th>مرحله</th><th>درصد</th><th>مبلغ</th><th>شرط آزادسازی</th></tr></thead>
       <tbody>
+        <?php $stagePayments = \Fava\Domain\Scoring::payments((float) $shownAmount, $cfg['payment']); ?>
         <?php foreach ($def['milestones'] as $i => $ms): $pct = (float) ($cfg['payment'][$i] ?? 0); ?>
           <tr>
             <td class="font-semibold whitespace-nowrap"><?= e($ms[0]) ?></td>
             <td class="num"><?= nf($pct) ?>٪</td>
-            <td class="num whitespace-nowrap"><?= e(money(round($shownAmount * $pct / 100, 3))) ?></td>
+            <td class="num whitespace-nowrap"><?= e(money($stagePayments[$i]['amount'] ?? null)) ?></td>
             <td><?= e($ms[1]) ?><?php if ($i === 1 && !empty($answers['tech']['milestone2'])): ?><div class="text-xs text-slate-700 mt-1" dir="auto"><b>مایلستون فنی تعریف‌شده:</b> <?= nl2p($answers['tech']['milestone2']) ?></div><?php endif; ?></td>
           </tr>
         <?php endforeach; ?>

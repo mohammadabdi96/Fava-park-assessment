@@ -33,6 +33,8 @@ class Results
                     'result_amount' => null, 'needs_resolution' => 0, 'computed_at' => null,
                     'final_decision' => null, 'final_amount' => null, 'final_note' => null,
                     'finalized_at' => null, 'finalized_by' => null, 'updated_at' => now_utc(),
+                    // the admin chose a tier between two specific opinions; one of them is gone now
+                    'tier_override' => null,
                 ], 'id = ?', [$proposalId]);
             }
             Proposals::refreshStatus($proposalId);
@@ -78,7 +80,7 @@ class Results
             return $errors;
         }
         if ($result['needs_resolution']) {
-            $errors['decision'] = 'ابتدا اختلاف سطح یا مبلغ درخواستی را در بخش «رفع اختلاف» مشخص کنید.';
+            $errors['decision'] = 'نظر دو داور درباره سطح طرح یا مبلغ درخواستی یکسان نیست. ابتدا آن را در بخش «نتیجه تجمیع دو داوری» مشخص کنید.';
             return $errors;
         }
         if (!in_array($decision, ['approve', 'conditional', 'reject'], true)) {
@@ -129,9 +131,10 @@ class Results
             'system_amount' => 0.0,
             'needs_resolution' => 0,
         ];
-        foreach ($db->all('SELECT system_decision, COUNT(*) AS n FROM {proposals} WHERE system_decision IS NOT NULL GROUP BY system_decision') as $r) {
-            if (isset($out['decisions'][$r['system_decision']])) {
-                $out['decisions'][$r['system_decision']] = (int) $r['n'];
+        // the outcome that counts: the admin's final decision where there is one, the system's proposal otherwise
+        foreach ($db->all('SELECT COALESCE(final_decision, system_decision) AS d, COUNT(*) AS n FROM {proposals} WHERE system_decision IS NOT NULL GROUP BY COALESCE(final_decision, system_decision)') as $r) {
+            if (isset($out['decisions'][$r['d']])) {
+                $out['decisions'][$r['d']] = (int) $r['n'];
             }
         }
         foreach ($db->all('SELECT final_decision, COUNT(*) AS n FROM {proposals} WHERE final_decision IS NOT NULL GROUP BY final_decision') as $r) {

@@ -10,7 +10,6 @@
  * @var array|null $result
  * @var bool $finalized
  * @var int $id
- * @var string[] $missing   roles whose form has not been submitted yet
  * @var bool $configChanged
  */
 use Fava\Core\View;
@@ -180,7 +179,8 @@ $num = function ($v) {
           <table class="tbl">
             <thead><tr><th>مرحله</th><th>درصد</th><th>مبلغ</th><th>شرط آزادسازی</th></tr></thead>
             <tbody>
-            <?php foreach ($def['milestones'] as $i => $ms): $pay = $result['payments'][$i] ?? null; ?>
+            <?php $stagePayments = \Fava\Domain\Scoring::payments((float) $result['amount'], $cfg['payment']); ?>
+            <?php foreach ($def['milestones'] as $i => $ms): $pay = $stagePayments[$i] ?? null; ?>
               <tr>
                 <td class="font-semibold whitespace-nowrap"><?= e($ms[0]) ?></td>
                 <td class="num"><?= $pay ? nf($pay['pct']) . '٪' : '—' ?></td>

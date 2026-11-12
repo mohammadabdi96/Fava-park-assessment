@@ -13,11 +13,19 @@
     return String(s).replace(/[۰-۹]/g, function (c) { return String(FA.indexOf(c)); })
       .replace(/[٠-٩]/g, function (c) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)); });
   }
-  /** "۲۲٫۵", "22,5", "22.5" → 22.5 ; anything else → null */
+  /**
+   * Same rule as Fa::number() on the server: the dot (or «٫», or «۲/۵») is the decimal
+   * mark, commas may only group thousands, anything else is not a number.
+   */
   function num(value) {
-    var s = toLatin(value || '').replace(/[٬,\s]/g, '').replace(/[٫\/]/g, '.');
-    if (s === '' || !/^\d*\.?\d+$/.test(s)) { return null; }
-    return parseFloat(s);
+    var s = toLatin(String(value === null || value === undefined ? '' : value)).replace(/[\s\u00A0\u200C\u200E\u200F]/g, '')
+      .replace(/٫/g, '.').replace(/[٬،]/g, ',');
+    if (/^-?\d+\/\d+$/.test(s)) { s = s.replace('/', '.'); }
+    if (s.indexOf(',') !== -1) {
+      if (!/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) { return null; }
+      s = s.replace(/,/g, '');
+    }
+    return /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? parseFloat(s) : null;
   }
   function trimNum(n, decimals) {
     return String(parseFloat(n.toFixed(decimals === undefined ? 2 : decimals)));
@@ -30,7 +38,7 @@
   /** amount in billion rials → “… میلیارد تومان / میلیون تومان” */
   function toman(billionRial) {
     var m = billionRial * 100;
-    return m >= 1000 ? fmt(m / 1000) + ' میلیارد تومان' : fmt(m) + ' میلیون تومان';
+    return m >= 1000 ? fmt(m / 1000, 3) + ' میلیارد تومان' : fmt(m, 1) + ' میلیون تومان';
   }
 
   // ------------------------------------------------------------------ toast
@@ -158,7 +166,7 @@
       if (v === null) { hint.textContent = 'فقط عدد وارد کنید (به میلیارد ریال).'; hint.classList.add('text-red-600'); return; }
       hint.classList.remove('text-red-600');
       var text = v > 0 ? 'برابر با ' + toman(v) : 'بدون پرداخت';
-      if (limit !== null && v > limit + 0.0005) { text += ' — بیشتر از مبنای محاسبه (' + fmt(limit) + ' میلیارد ریال) است.'; }
+      if (limit !== null && v > limit + 0.0005) { text += ' — بیشتر از مبنای محاسبه (' + fmt(limit, 3) + ' میلیارد ریال) است.'; }
       hint.textContent = text;
     }
     input.addEventListener('input', function () { update(false); });

@@ -26,6 +26,12 @@ class DashboardController extends Controller
         foreach ($db->all("SELECT $cols FROM {proposals} WHERE status = 'completed' ORDER BY computed_at ASC LIMIT 6") as $p) {
             $todo[] = ['p' => $p, 'kind' => $p['needs_resolution'] ? 'resolve' : 'finalize'];
         }
+        // being judged, but one judge was never chosen or never received the link: nobody else will notice
+        $stuck = "SELECT $cols FROM {proposals} WHERE status = 'judging' AND "
+            . "(SELECT COUNT(*) FROM {assignments} a WHERE a.proposal_id = {proposals}.id AND a.status <> 'pending') < 2 ORDER BY id ASC LIMIT 6";
+        foreach ($db->all($stuck) as $p) {
+            $todo[] = ['p' => $p, 'kind' => 'gap'];
+        }
         foreach ($db->all("SELECT $cols FROM {proposals} WHERE status = 'review' ORDER BY id ASC LIMIT 6") as $p) {
             $todo[] = ['p' => $p, 'kind' => 'review'];
         }

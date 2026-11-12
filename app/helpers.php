@@ -53,16 +53,16 @@ function fa($value): string
 
 /**
  * Format a number for display with Persian digits.
- * $decimals = null keeps up to 2 decimals and drops trailing zeros.
+ * $decimals = null keeps up to $max decimals and drops trailing zeros.
  */
-function nf($number, ?int $decimals = null, bool $group = true): string
+function nf($number, ?int $decimals = null, bool $group = true, int $max = 2): string
 {
     if ($number === null || $number === '') {
         return '—';
     }
     $number = (float) $number;
     if ($decimals === null) {
-        $s = number_format($number, 2, '.', $group ? ',' : '');
+        $s = number_format($number, $max, '.', $group ? ',' : '');
         if (strpos($s, '.') !== false) {
             $s = rtrim(rtrim($s, '0'), '.');
         }
@@ -72,13 +72,17 @@ function nf($number, ?int $decimals = null, bool $group = true): string
     return Fa::digits(str_replace(',', '٬', $s));
 }
 
-/** Amount in billion rials, e.g. «۲۲ میلیارد ریال». */
+/**
+ * Amount in billion rials, e.g. «۲۲ میلیارد ریال».
+ * Amounts are calculated and stored to three decimals (one million rials), so that is
+ * what is shown: the figure on the screen is exactly the figure the system works with.
+ */
 function money($amount, ?int $decimals = null): string
 {
     if ($amount === null || $amount === '') {
         return '—';
     }
-    return nf($amount, $decimals) . ' میلیارد ریال';
+    return nf($amount, $decimals, true, 3) . ' میلیارد ریال';
 }
 
 /** Billion rials expressed in tomans, as a helper hint. */
@@ -89,9 +93,9 @@ function toman_hint($amount): string
     }
     $millionToman = (float) $amount * 100; // 1 billion rial = 100 million toman
     if ($millionToman >= 1000) {
-        return nf($millionToman / 1000) . ' میلیارد تومان';
+        return nf($millionToman / 1000, null, true, 3) . ' میلیارد تومان';
     }
-    return nf($millionToman) . ' میلیون تومان';
+    return nf($millionToman, null, true, 1) . ' میلیون تومان';
 }
 
 /** UTC datetime string (or timestamp) -> Jalali date in the configured time zone, Persian digits. */
@@ -413,7 +417,11 @@ function finish_request(): void
 function content_disposition(string $filename, string $type = 'attachment'): string
 {
     $filename = (string) preg_replace('/[\x00-\x1F\x7F"\\\\\/]+/u', '_', $filename);
-    $ascii = (string) preg_replace('/[^\x20-\x7E]+/', '_', $filename);
-    $ascii = trim($ascii, ' ._') === '' || !preg_match('/[A-Za-z0-9]/', $ascii) ? 'file' . (preg_match('/\.[A-Za-z0-9]{1,5}$/', $filename, $m) ? $m[0] : '') : $ascii;
+    // plain-ASCII fallback for old clients; a name without any Latin letter becomes «file.ext»
+    $ext = preg_match('/\.[A-Za-z0-9]{1,5}$/', $filename, $m) ? $m[0] : '';
+    $stem = $ext !== '' ? substr($filename, 0, -strlen($ext)) : $filename;
+    $stem = trim((string) preg_replace('/[^\x20-\x7E]+/', '_', $stem), ' ._');
+    $stem = (string) preg_replace('/[_ ]{2,}/', '_', $stem);
+    $ascii = (preg_match('/[A-Za-z0-9]/', $stem) ? $stem : 'file') . $ext;
     return $type . '; filename="' . $ascii . '"; filename*=UTF-8\'\'' . rawurlencode($filename);
 }

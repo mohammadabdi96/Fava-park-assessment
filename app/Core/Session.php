@@ -110,7 +110,12 @@ class Session
     public static function keepInput(array $input): void
     {
         self::start();
-        unset($input['_csrf'], $input['password'], $input['password_confirm'], $input['smtp_pass']);
+        foreach (array_keys($input) as $key) {
+            // never keep secrets in the session, whatever the field is called
+            if ($key === '_csrf' || stripos((string) $key, 'pass') !== false) {
+                unset($input[$key]);
+            }
+        }
         $_SESSION['_old_next'] = $input;
     }
 

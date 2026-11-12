@@ -194,11 +194,59 @@ class FieldExtractor
         }
 
         return [
-            'fields' => $f,
+            'fields' => self::limit($f),
             'warnings' => $warnings,
             'status' => $found === 3 ? 'ok' : ($found === 0 ? 'failed' : 'partial'),
             'doc_type' => $docType,
         ];
+    }
+
+    /**
+     * Keep every extracted value to a sane size. A worksheet is a few pages; anything
+     * larger is a mis-detected value and must not overflow a database column.
+     */
+    private static function limit(array $f): array
+    {
+        $cut = function ($v, int $max): string {
+            $v = (string) $v;
+            return mb_strlen($v) > $max ? rtrim(mb_substr($v, 0, $max - 1)) . '…' : $v;
+        };
+        foreach (['title' => 500, 'title_alt' => 500, 'company' => 250, 'company_alt' => 250, 'expected_output' => 5000,
+            'product_name' => 300, 'filled_date' => 40, 'ceo_name' => 150, 'ceo_phone' => 40, 'trl_text' => 500,
+            'cost_total_raw' => 60, 'cost_unit' => 40] as $key => $max) {
+            if (isset($f[$key])) {
+                $f[$key] = $cut($f[$key], $max);
+            }
+        }
+        $f['company_facts'] = array_slice($f['company_facts'] ?? [], 0, 30);
+        foreach ($f['company_facts'] as &$fact) {
+            $fact['value'] = $cut($fact['value'], 500);
+        }
+        unset($fact);
+        foreach (['request_type' => [12, 300], 'outputs' => [30, 1000]] as $key => $lim) {
+            $list = [];
+            foreach (array_slice($f[$key] ?? [], 0, $lim[0]) as $item) {
+                $list[] = $cut($item, $lim[1]);
+            }
+            $f[$key] = $list;
+        }
+        if (!empty($f['team']['rows'])) {
+            $rows = [];
+            foreach (array_slice($f['team']['rows'], 0, 60) as $row) {
+                $cells = [];
+                foreach (array_slice((array) $row, 0, 16) as $cell) {
+                    $cells[] = $cut($cell, 300);
+                }
+                $rows[] = $cells;
+            }
+            $f['team']['rows'] = $rows;
+            $headers = [];
+            foreach (array_slice((array) ($f['team']['headers'] ?? []), 0, 16) as $h) {
+                $headers[] = $cut($h, 200);
+            }
+            $f['team']['headers'] = $headers;
+        }
+        return $f;
     }
 
     // ---- collecting label/value pairs -----------------------------------------
@@ -603,7 +651,7 @@ class FieldExtractor
                 continue;
             }
             for ($i = count($r) - 1; $i > $labelIndex; $i--) {
-                $num = Fa::number(preg_replace('/[^\d.,٫٬۰-۹٠-٩]/u', '', $r[$i]));
+                $num = Fa::looseNumber(preg_replace('/[^\d.,٫٬۰-۹٠-٩]/u', '', $r[$i]));
                 if ($num !== null && $num > 0) {
                     $f['cost_total_raw'] = Fa::clean($r[$i]);
                     $f['cost_total'] = $num;

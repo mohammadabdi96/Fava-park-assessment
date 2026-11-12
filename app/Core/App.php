@@ -46,7 +46,10 @@ class App
                         if (Request::wantsJson()) {
                             throw new HttpException(401, 'نشست شما به پایان رسیده است. دوباره وارد شوید.');
                         }
-                        Session::set('_intended', $path);
+                        if (Request::method() === 'GET') {
+                            // after the login, go back to the page that was asked for
+                            Session::set('_intended', $path);
+                        }
                         redirect('/admin/login');
                     }
                     if (Request::isPost()) {

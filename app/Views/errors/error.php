@@ -21,7 +21,8 @@ $__title = $__titles[$status] ?? 'خطا';
     <div class="mx-auto w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4"><?= icon('warn', 'w-8 h-8') ?></div>
     <div class="text-xs font-bold text-slate-400 num ltr"><?= e((string) $status) ?></div>
     <h1 class="text-xl font-extrabold text-slate-900 mt-1"><?= e($__title) ?></h1>
-    <p class="text-sm text-slate-600 mt-3 leading-7 whitespace-pre-line text-start" dir="auto"><?= e($message) ?></p>
+    <?php $__long = mb_strlen($message) > 110 || strpos($message, "\n") !== false; ?>
+    <p class="text-sm text-slate-600 mt-3 leading-7 whitespace-pre-line <?= $__long ? 'text-start' : 'text-center' ?>" dir="auto"><?= e($message) ?></p>
     <div class="mt-6 flex items-center justify-center gap-2">
       <button type="button" class="btn btn-secondary" onclick="history.back()">بازگشت</button>
       <?php if (in_array($status, [401, 419], true)): ?><a class="btn btn-primary" href="<?= e(url('/admin')) ?>">ورود دوباره</a><?php endif; ?>
