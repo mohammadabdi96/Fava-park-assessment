@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# Fava Park – Proposal Assessment System
+# Apache / LiteSpeed rules (cPanel). Upload this file together with the rest.
+# ---------------------------------------------------------------------------
+
+Options -Indexes
+DirectoryIndex index.php
+AddDefaultCharset UTF-8
+
+# Files that must never be downloaded (notes, logs, tool configs, dot-files).
+# ".well-known" stays reachable so that AutoSSL / Let's Encrypt keeps working.
+<FilesMatch "(^\.(?!well-known)|\.(md|log|sql|sh|py|ini|dist|bak|tmp|lock)$|^(composer\.json|package(-lock)?\.json|paths\.php)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Private folders: application code, configuration, uploaded proposals, logs
+    RewriteRule ^(app|config|storage|dev|tests|docs)(/|$) - [F,L,NC]
+
+    # Real files (CSS, JavaScript, font) are served as they are;
+    # every other address is handled by the application.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# The addresses of CSS/JS/font files change whenever the files change,
+# so browsers may keep them for a long time.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>
+<IfModule mod_mime.c>
+    AddType font/woff2 .woff2
+    AddType image/svg+xml .svg
+</IfModule>

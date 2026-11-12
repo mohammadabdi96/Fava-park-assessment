@@ -1,0 +1,22 @@
+# --- runtime data: never commit ---
+/config/config.php
+/config/*.tmp
+/paths.php
+/storage/uploads/*
+/storage/database/*
+/storage/logs/*
+/storage/sessions/*
+/storage/cache/*
+/storage/*.txt
+!/storage/probe.txt
+!/storage/**/.gitkeep
+!/storage/**/index.html
+
+# --- tooling ---
+/node_modules/
+/vendor/
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

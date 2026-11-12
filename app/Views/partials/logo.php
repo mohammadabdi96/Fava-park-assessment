@@ -1,0 +1,6 @@
+<?php /** @var string $class */ ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="<?= e($class ?? 'w-10 h-10') ?>" aria-hidden="true">
+  <rect width="48" height="48" rx="12" fill="#fff" fill-opacity=".14"/>
+  <path d="M13 33V21m7 12V15m7 18v-9m7 9V18" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M11 37h26" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+</svg>
