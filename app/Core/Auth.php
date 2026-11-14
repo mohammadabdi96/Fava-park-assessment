@@ -70,6 +70,8 @@ class Auth
             // keep timing similar whether or not the user exists
             password_verify($password, '$2y$10$usesomesillystringfore7hnbRJHxXVLeakoG8K30oukPsA.ztMG');
         }
+        // clean old rows on every attempt, not only after a successful login
+        $db->delete('login_attempts', 'created_at < ?', [gmdate('Y-m-d H:i:s', time() - 30 * 86400)]);
         $db->insert('login_attempts', [
             'created_at' => now_utc(),
             'ip' => $ip,
@@ -85,8 +87,6 @@ class Auth
         }
         self::login($row);
         $db->update('admins', ['last_login_at' => now_utc()], 'id = ?', [(int) $row['id']]);
-        // old attempts are no longer interesting
-        $db->delete('login_attempts', 'created_at < ?', [gmdate('Y-m-d H:i:s', time() - 30 * 86400)]);
         return true;
     }
 

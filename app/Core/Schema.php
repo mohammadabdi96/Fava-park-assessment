@@ -2,6 +2,8 @@
 
 namespace Fava\Core;
 
+use Fava\Domain\Settings;
+
 /**
  * Database schema, written once and rendered for MySQL/MariaDB or SQLite.
  *
@@ -280,6 +282,57 @@ class Schema
                 $db->pdo->exec($stmt);
             }
         }
+    }
+
+    /**
+     * Bring an existing database up to Schema::VERSION: create missing tables/indexes and
+     * add new columns. Does nothing once the stored version is current.
+     */
+    public static function upgrade(DB $db): void
+    {
+        if ((int) Settings::get('schema_version', 0) >= self::VERSION) {
+            return;
+        }
+        self::install($db);
+        foreach (self::tables() as $name => $def) {
+            if (!$db->tableExists($name)) {
+                continue;
+            }
+            $table = $db->table($name);
+            $cols = self::columns($db, $table);
+            foreach ($def['cols'] as $col => $spec) {
+                if (in_array($col, $cols, true)) {
+                    continue;
+                }
+                if (!in_array('null', $spec, true) && !array_key_exists('default', $spec)) {
+                    // shortcut: a new NOT NULL column without a default needs a hand-written migration
+                    continue;
+                }
+                try {
+                    $db->pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $col . ' ' . self::columnSql($spec, $db->isMysql()));
+                    $cols[] = $col;
+                } catch (\Throwable $e) {
+                    // a parallel request may have added it between the check and the ALTER
+                    if (!in_array($col, self::columns($db, $table), true)) {
+                        throw $e;
+                    }
+                }
+            }
+        }
+        Settings::set('schema_version', self::VERSION);
+    }
+
+    /** Column names of an existing table. */
+    private static function columns(DB $db, string $table): array
+    {
+        if ($db->isMysql()) {
+            return array_map('strval', $db->col('SHOW COLUMNS FROM ' . $table));
+        }
+        $out = [];
+        foreach ($db->pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $out[] = (string) $row['name'];
+        }
+        return $out;
     }
 
     /** Tables of this application that already exist (used by the installer to warn before reuse). */

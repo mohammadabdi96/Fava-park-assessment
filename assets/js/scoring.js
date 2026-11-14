@@ -60,14 +60,14 @@
   }
 
   /**
-   * @param {object} cfg      client config: {role, dims:{dim:{criteria:[ids]}}, weights, thresholds, tiers, risk, cap_amount}
+   * @param {object} cfg      client config: {role, dims:{dim:{criteria:[ids]}}, criteria:{dim:[ids]}, weights, thresholds, tiers, risk, cap_amount}
    * @param {object} answers  {scalability, priority, scores:{id:1..5}, trl, risk_exec, risk_market, requested_amount}
    * @param {number|null} fixedAmount requested amount set by the admin
    */
   function judge(cfg, answers, fixedAmount) {
     var dims = {}, complete = true, share = 0, weightSum = 0;
     Object.keys(cfg.dims).forEach(function (dim) {
-      var ids = cfg.dims[dim].criteria, sum = 0, filled = 0;
+      var ids = (cfg.criteria && cfg.criteria[dim]) || cfg.dims[dim].criteria, sum = 0, filled = 0;
       ids.forEach(function (id) {
         var v = answers.scores && answers.scores[id] ? parseInt(answers.scores[id], 10) : 0;
         if (v >= 1 && v <= 5) { sum += v; filled++; }

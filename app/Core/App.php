@@ -15,6 +15,9 @@ class App
             $router = require APP_ROOT . '/app/routes.php';
             $path = Request::path();
             $installed = Config::installed();
+            if ($installed) {
+                Schema::upgrade(DB::get());
+            }
 
             if (!$installed) {
                 // Until the installer has found out whether URL rewriting works, use the form

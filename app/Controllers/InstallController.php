@@ -179,7 +179,9 @@ class InstallController extends Controller
         if ($in['org_name'] === '') {
             $in['org_name'] = 'پارک فاوا';
         }
-        if ($in['app_url'] !== '' && !preg_match('#^https?://[^\s/]+#i', $in['app_url'])) {
+        if ($in['app_url'] === '') {
+            $errors['app_url'] = 'نشانی کامل سامانه را وارد کنید؛ پیوندهای ایمیل از همین نشانی ساخته می‌شود.';
+        } elseif (!preg_match('#^https?://[^\s/]+#i', $in['app_url'])) {
             $errors['app_url'] = 'نشانی سامانه باید با http:// یا https:// شروع شود.';
         }
         if ($in['admin_name'] === '') {
@@ -233,7 +235,7 @@ class InstallController extends Controller
                 'app_key' => bin2hex(random_bytes(32)),
                 'pretty_urls' => $in['pretty_urls'] === '1',
                 'debug' => false,
-                'trust_proxy' => true,
+                'trust_proxy' => false,
             ]);
             Settings::flush();
             Settings::setMany([

@@ -70,7 +70,7 @@ class Request
         if ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443) {
             return true;
         }
-        if (Config::get('trust_proxy', true)) {
+        if (Config::get('trust_proxy', false)) {
             $proto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
             if ($proto !== '' && strpos($proto, 'https') === 0) {
                 return true;
@@ -85,7 +85,7 @@ class Request
     public static function host(): string
     {
         $host = '';
-        if (Config::get('trust_proxy', true) && !empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
+        if (Config::get('trust_proxy', false) && !empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
             $host = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_HOST'])[0]);
         }
         if ($host === '') {
@@ -103,7 +103,15 @@ class Request
 
     public static function ip(): string
     {
-        return substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        if (Config::get('trust_proxy', false)) {
+            // only safe when a proxy in front of the app overwrites this header
+            $forwarded = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))[0]);
+            if (filter_var($forwarded, FILTER_VALIDATE_IP)) {
+                $ip = $forwarded;
+            }
+        }
+        return substr($ip, 0, 45);
     }
 
     public static function userAgent(): string

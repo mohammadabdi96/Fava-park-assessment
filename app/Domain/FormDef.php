@@ -70,7 +70,32 @@ class FormDef
             && abs(array_sum($saved['payment']) - 100) < 0.0001) {
             $cfg['payment'] = array_map('floatval', array_values($saved['payment']));
         }
+        if (isset($saved['criteria']) && is_array($saved['criteria'])) {
+            $crit = [];
+            foreach ($saved['criteria'] as $dim => $ids) {
+                if (!isset($cfg['weights'][$dim]) || !is_array($ids)) {
+                    continue;
+                }
+                $ids = array_values(array_filter($ids, 'is_string'));
+                if ($ids) {
+                    $crit[$dim] = $ids;
+                }
+            }
+            if ($crit) {
+                $cfg['criteria'] = $crit;
+            }
+        }
         return $cfg;
+    }
+
+    /** Criterion ids per dimension; stored with a frozen config so later edits cannot change an assessment. */
+    public static function criteriaMap(): array
+    {
+        $out = [];
+        foreach (self::get()['dimensions'] as $dim => $d) {
+            $out[$dim] = array_keys($d['criteria']);
+        }
+        return $out;
     }
 
     public static function roleDims(string $role): array
@@ -114,6 +139,7 @@ class FormDef
         return [
             'role' => $role,
             'dims' => $dims,
+            'criteria' => $cfg['criteria'] ?? [],
             'weights' => $cfg['weights'],
             'thresholds' => $cfg['thresholds'],
             'tiers' => $cfg['tiers'],

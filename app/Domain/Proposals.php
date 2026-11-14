@@ -68,8 +68,16 @@ class Proposals
         if (!$p || (!$force && !empty($p['config_json']))) {
             return;
         }
+        $cfg = FormDef::currentConfig();
+        $old = json_in((string) ($p['config_json'] ?? ''), null);
+        if (is_array($old) && !empty($old['criteria'])) {
+            // keep the criteria the judges already answered; a forced refresh only updates the numbers
+            $cfg['criteria'] = $old['criteria'];
+        } else {
+            $cfg['criteria'] = FormDef::criteriaMap();
+        }
         DB::get()->update('proposals', [
-            'config_json' => json_encode(FormDef::currentConfig(), JSON_UNESCAPED_UNICODE),
+            'config_json' => json_encode($cfg, JSON_UNESCAPED_UNICODE),
             'config_at' => now_utc(),
         ], 'id = ?', [$id]);
     }
@@ -78,16 +86,25 @@ class Proposals
     public static function nextCode(): string
     {
         $prefix = 'P' . Jalali::format('Y') . '-';
-        $last = DB::get()->val('SELECT code FROM {proposals} WHERE code LIKE ? ORDER BY id DESC LIMIT 1', [$prefix . '%']);
         $n = 0;
-        if (is_string($last) && preg_match('/-(\d+)$/', $last, $m)) {
-            $n = (int) $m[1];
+        foreach (DB::get()->col('SELECT code FROM {proposals} WHERE code LIKE ?', [$prefix . '%']) as $code) {
+            if (preg_match('/-(\d+)$/', (string) $code, $m)) {
+                $n = max($n, (int) $m[1]);
+            }
         }
         do {
             $n++;
             $code = $prefix . str_pad((string) $n, 3, '0', STR_PAD_LEFT);
         } while (DB::get()->val('SELECT COUNT(*) FROM {proposals} WHERE code = ?', [$code]));
         return $code;
+    }
+
+    /** A unique-key violation from either driver. */
+    private static function isDuplicate(\Throwable $e): bool
+    {
+        return (string) $e->getCode() === '23000'
+            || stripos($e->getMessage(), 'UNIQUE constraint failed') !== false
+            || stripos($e->getMessage(), 'Duplicate entry') !== false;
     }
 
     private static function searchText(string $code, string $title, string $company, string $original): string
@@ -142,8 +159,8 @@ class Proposals
 
         $f = $extract['fields'];
         $db = DB::get();
-        try {
-            $id = $db->tx(function (DB $db) use ($f, $extract, $doc, $originalName, $stored, $size, $hash, $adminId) {
+        $insert = function () use ($db, $f, $extract, $doc, $originalName, $stored, $size, $hash, $adminId) {
+            return $db->tx(function (DB $db) use ($f, $extract, $doc, $originalName, $stored, $size, $hash, $adminId) {
                 $code = self::nextCode();
                 $now = now_utc();
                 $id = $db->insert('proposals', [
@@ -174,6 +191,19 @@ class Proposals
                 ]);
                 return $id;
             });
+        };
+        try {
+            $id = null;
+            for ($try = 1; $id === null; $try++) {
+                try {
+                    $id = $insert();
+                } catch (\Throwable $e) {
+                    // two uploads in the same second can pick the same tracking code; try the next one
+                    if ($try >= 3 || !self::isDuplicate($e)) {
+                        throw $e;
+                    }
+                }
+            }
         } catch (\Throwable $e) {
             @unlink($target);
             throw $e;

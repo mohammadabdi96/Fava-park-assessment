@@ -176,7 +176,7 @@ class ProposalController extends Controller
             'mailReady' => Mailer::configured(),
             'mails' => DB::get()->all('SELECT * FROM {mail_log} WHERE proposal_id = ? ORDER BY id DESC LIMIT 8', [$id]),
             'docHtml' => DocRenderer::html(Proposals::doc($id)),
-            'configChanged' => !empty($p['config_json']) && json_encode(FormDef::currentConfig()) !== json_encode($cfg),
+            'configChanged' => !empty($p['config_json']) && FormDef::currentConfig() != array_diff_key($cfg, ['criteria' => 1]),
         ], 'proposals');
     }
 

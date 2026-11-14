@@ -14,7 +14,7 @@ class Results
      * Recalculate after anything that can change the outcome (a submission, a reopened
      * form, the admin fixing the amount or the tier). Safe to call any number of times.
      *
-     * @return array|null the result, or null while a form is still missing
+     * @return array|null the result, or null while a form is still missing or does not match the frozen criteria
      */
     public static function recompute(int $proposalId): ?array
     {
@@ -45,6 +45,10 @@ class Results
         $adminAmount = $p['requested_amount'] !== null && (float) $p['requested_amount'] > 0 ? (float) $p['requested_amount'] : null;
         $tierOverride = !empty($p['tier_override']) ? (string) $p['tier_override'] : null;
         $result = Scoring::aggregate(Assignments::answers($as['tech']), Assignments::answers($as['biz']), $cfg, $adminAmount, $tierOverride);
+        if ($result === null) {
+            // an answer set does not cover the frozen criteria; the admin has to reopen that form
+            return null;
+        }
 
         $db->update('proposals', [
             'result_json' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),

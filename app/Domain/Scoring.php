@@ -127,7 +127,7 @@ class Scoring
         $share = 0.0;
         $weightSum = 0.0;
         foreach ($def['roles'][$role]['dims'] as $dim) {
-            $ids = array_keys($def['dimensions'][$dim]['criteria']);
+            $ids = !empty($cfg['criteria'][$dim]) ? $cfg['criteria'][$dim] : array_keys($def['dimensions'][$dim]['criteria']);
             $sum = 0;
             $filled = 0;
             foreach ($ids as $id) {
@@ -223,11 +223,16 @@ class Scoring
      * @param array      $techAnswers / $bizAnswers normalised answers of each judge
      * @param float|null $adminAmount  requested amount fixed by the admin (null = use the judges' figures)
      * @param string|null $tierOverride tier chosen by the admin when the judges disagree
+     * @return array|null null when a form does not cover the criteria of the frozen config
      */
-    public static function aggregate(array $techAnswers, array $bizAnswers, array $cfg, ?float $adminAmount = null, ?string $tierOverride = null): array
+    public static function aggregate(array $techAnswers, array $bizAnswers, array $cfg, ?float $adminAmount = null, ?string $tierOverride = null): ?array
     {
         $tech = self::judge('tech', $techAnswers, $cfg, $adminAmount);
         $biz = self::judge('biz', $bizAnswers, $cfg, $adminAmount);
+        if (!$tech['complete'] || !$biz['complete']) {
+            // the form definition changed after these answers were saved; do not mix two versions
+            return null;
+        }
         $def = FormDef::get();
 
         $dims = [];

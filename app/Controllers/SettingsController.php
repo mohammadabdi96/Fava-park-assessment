@@ -99,7 +99,9 @@ class SettingsController extends Controller
         if ($org === '') {
             $errors[] = 'نام سازمان را وارد کنید.';
         }
-        if ($url !== '' && !preg_match('#^https?://[^\s/]+#i', $url)) {
+        if ($url === '') {
+            $errors[] = 'نشانی سامانه را وارد کنید؛ پیوندهای ایمیل از همین نشانی ساخته می‌شود.';
+        } elseif (!preg_match('#^https?://[^\s/]+#i', $url)) {
             $errors[] = 'نشانی سامانه باید با http:// یا https:// شروع شود.';
         }
         if ($notify !== '' && !filter_var($notify, FILTER_VALIDATE_EMAIL)) {
